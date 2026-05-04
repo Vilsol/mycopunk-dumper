@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#MISE description="Run the dump with the probe enabled — writes $MYCOPUNK_DIR/probe/{types.md,catalogs.txt,subclasses.txt,unlock-directives.txt,samples/}. Use this when exploring new game data before adding a dumper."
+#MISE depends=["deploy"]
+set -uo pipefail
+
+DATA="$MYCOPUNK_DIR/data.json"
+LOG="$MYCOPUNK_DIR/BepInEx/LogOutput.log"
+PROBE_DIR="$MYCOPUNK_DIR/probe"
+FLAG="$MYCOPUNK_DIR/probe.flag"
+
+if ! pgrep -f "steamwebhelper " >/dev/null; then
+    echo "ERROR: Steam is not running. Start Steam first." >&2
+    exit 1
+fi
+
+pkill -f Mycopunk.exe >/dev/null 2>&1 || true
+sleep 2
+
+rm -rf "$PROBE_DIR" "$DATA" "$LOG"
+touch "$FLAG"
+
+steam "steam://rungameid/$MYCOPUNK_APPID" >/dev/null 2>&1 || true
+echo "Launched Mycopunk with probe enabled at $(date +%T); waiting..."
+
+for _ in $(seq 1 100); do
+    if [[ -s "$DATA" ]]; then break; fi
+    sleep 3
+done
+
+rm -f "$FLAG"
+
+if [[ ! -s "$DATA" ]]; then
+    echo "ERROR: timeout — data.json never appeared. Last log lines:" >&2
+    tail -20 "$LOG" >&2 2>/dev/null || true
+    exit 1
+fi
+
+pkill -f Mycopunk.exe >/dev/null 2>&1 || true
+
+if [[ -d "$PROBE_DIR" ]]; then
+    echo "Probe output at $PROBE_DIR:"
+    ls -la "$PROBE_DIR"
+else
+    echo "WARNING: probe directory not produced. Check Plugin.Probe.Run() and the flag-file path." >&2
+fi

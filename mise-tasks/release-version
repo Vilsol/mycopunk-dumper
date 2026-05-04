@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#MISE description="Full new-game-version pipeline: decompile → build → dump → validate → release into data repo → extract assets. Run after Steam updates Mycopunk."
+set -euo pipefail
+
+# Defaults: data repo sits next to the dumper repo unless overridden.
+DUMPER_REPO="$(realpath "$(dirname "$0")/..")"
+DATA_REPO_DEFAULT="$(realpath "$DUMPER_REPO/../mycopunk-data" 2>/dev/null || echo "")"
+DATA_REPO="${1:-$DATA_REPO_DEFAULT}"
+SKIP_ASSETS="${SKIP_ASSETS:-0}"
+
+if [ -z "$DATA_REPO" ] || [ ! -f "$DATA_REPO/index.json" ]; then
+    echo "Data repo not found or missing index.json: ${DATA_REPO:-<unset>}" >&2
+    echo "Usage: mise run release-version [<data-repo-path>]" >&2
+    echo "  Set SKIP_ASSETS=1 to skip the (slow) AssetRipper export." >&2
+    exit 1
+fi
+
+step() { printf "\n\033[1;36m===== %s =====\033[0m\n" "$1"; }
+
+step "1/6  Re-decompile Assembly-CSharp.dll"
+# Decompiled source frequently drifts after a game update — re-extracting it
+# now means subsequent grep-the-source workflows see the new API surface.
+mise run decompile
+
+step "2/6  Build plugin (Release)"
+# Build before dumping. If the game's API changed (e.g. v1.7.3 → v1.8 dropped
+# ObjectiveBase.Title), the compiler tells us exactly which line to patch
+# before wasting time on a dump that can't run.
+if ! mise run release; then
+    cat >&2 <<EOF
+
+BUILD FAILED. Likely the game's API changed.
+
+Fix the compile error in this repo (the new decompiled/ source from step 1
+shows the current shape). Common pattern: replace 'o.Foo' with
+'GetPrivateField<T>(o, "foo")' when a public accessor was removed.
+
+Re-run: mise run release-version
+EOF
+    exit 1
+fi
+
+step "3/6  Dump the game"
+# This deploys the freshly-built DLL and launches Mycopunk headless. ~25s.
+mise run dump
+
+DUMP="$MYCOPUNK_DIR/data.json"
+if [ ! -f "$DUMP" ]; then
+    echo "Dump expected at $DUMP but it doesn't exist — see BepInEx/LogOutput.log" >&2
+    exit 1
+fi
+VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["Version"])' "$DUMP")
+BUILD_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["BuildID"])' "$DUMP")
+echo "  Game reported: $VERSION (build $BUILD_ID)"
+
+step "4/6  Validate dump against schema"
+# Bun's `bun x` resolves ajv-cli's bin entrypoint correctly; the data file
+# already has a .json extension so we don't hit the ajv-cli extension-sniffing
+# bug that bit the GitHub CI.
+mise exec bun -- bun x ajv-cli@latest validate \
+    --spec=draft2020 \
+    -s "$DUMPER_REPO/data.schema.json" \
+    -d "$DUMP"
+
+step "5/6  Release $VERSION into $DATA_REPO"
+mise run release-dump "$DATA_REPO"
+
+if [ "$SKIP_ASSETS" = "1" ]; then
+    step "6/6  Skipped asset extraction (SKIP_ASSETS=1)"
+else
+    step "6/6  Extract Unity assets (~15min) — Ctrl-C is safe; re-run later with mise run extract-assets"
+    mise run extract-assets
+fi
+
+cat <<EOF
+
+✓ Release pipeline complete for $VERSION (build $BUILD_ID)
+
+Review and commit the data-repo changes:
+  cd $DATA_REPO
+  less data/$VERSION/CHANGES.md
+  git diff -- index.json _redirects
+  git add data/$VERSION schema/data.schema.json index.json _redirects
+  git commit -m "release $VERSION (build $BUILD_ID)"
+  git push
+
+Extracted assets:
+  ~/MycopunkExtracted/$VERSION/ExportedProject/Assets/Texture2D/
+EOF

@@ -1,0 +1,1630 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vilsol/MycopunkDumper/data.schema.json",
+  "title": "MycopunkDumper data.json",
+  "description": "JSON Schema for the dump produced by the MycopunkDumper BepInEx plugin for the Unity game Mycopunk. The dump is a static catalog of every upgrade, gear, character, resource, and directive defined in the game, extracted by walking publicized game state at runtime and serializing it via Newtonsoft.Json (with a JsonUtility shim for Unity-native types). See SCHEMA_CHANGES.md for the migration history from the legacy upgrades.json shape.",
+  "type": "object",
+  "required": ["gameVersion", "upgrades", "gears", "characters", "resources", "directives", "missions", "objectives", "regions", "enemies", "statusEffects", "stacks", "threats", "missionModifiers", "lootPools", "localization", "authItems", "patternPaths", "threatProfiles", "customWaves", "collectables", "enemyGroups", "globalEvents", "playerUpgrades", "statusEffectGlobals", "formulas", "achievements", "steamStats"],
+  "properties": {
+    "gameVersion": {
+      "type": "object",
+      "description": "Game version metadata captured at dump time. Sourced from Global.Version (Application.version, the value shown on the start menu) and Global.BuildID (Steam build ID via Online.GetBuildID).",
+      "required": ["Version"],
+      "properties": {
+        "Version": { "type": "string", "description": "Application.version (semantic-ish, e.g. \"1.2.0\")." },
+        "BuildID": { "type": "string", "description": "Steam build ID as returned by the platform layer; may be \"0\" or empty when not running under Steam." },
+        "DumpedAt": { "type": "string", "description": "ISO-8601 UTC timestamp when this dump was produced (yyyy-MM-ddTHH:mm:ssZ)." }
+      }
+    },
+    "upgrades": {
+      "type": "object",
+      "description": "Catalog of every upgrade in the game keyed by stringified UpgradeID. Vanilla upgrades use the bare integer (e.g. \"99770\"); modded upgrades use \"<Mod>:<ID>\". Negative IDs occur for some game-defined upgrades and are valid.",
+      "additionalProperties": { "$ref": "#/$defs/Upgrade" }
+    },
+    "gears": {
+      "type": "object",
+      "description": "Catalog of non-character upgradables (weapons, grenades, utility, vehicles, etc.) keyed by GearInfo.APIName (e.g. \"smg\", \"accelerator\", \"wrench\").",
+      "additionalProperties": { "$ref": "#/$defs/Gear" }
+    },
+    "characters": {
+      "type": "object",
+      "description": "Catalog of playable characters keyed by GearInfo.APIName (\"wrangler\", \"bruiser\", \"scrapper\", \"glider\").",
+      "additionalProperties": { "$ref": "#/$defs/CharacterEntry" }
+    },
+    "resources": {
+      "type": "object",
+      "description": "Game-economy catalog from PlayerResource ScriptableObjects, keyed by PlayerResource.ID (e.g. \"saxonite\", \"scrip\", \"beezia\").",
+      "additionalProperties": { "$ref": "#/$defs/Resource" }
+    },
+    "directives": {
+      "type": "object",
+      "description": "Mission-modifier directive catalog from DirectiveData ScriptableObjects, keyed by stringified integer ID.",
+      "additionalProperties": { "$ref": "#/$defs/Directive" }
+    },
+    "missions": {
+      "type": "object",
+      "description": "Mission catalog from Global.Instance.Missions, keyed by Mission.ID (a string identifier like \"sat_salvage\", \"ouroboros\").",
+      "additionalProperties": { "$ref": "#/$defs/MissionEntry" }
+    },
+    "objectives": {
+      "type": "object",
+      "description": "Objective-prefab catalog (ObjectiveBase subclasses). Each entry is a NetworkBehaviour prefab spawned by missions during setup via Mission.SpawnAndAddObjective(prefab). Keyed by gameObject.name (e.g. \"Cleanup Detail Objective\", \"Power Decommissioners Objective\", \"Extract Objective\"). The same key is used by mission RawData @ref fields (\"objective:<Name>\").",
+      "additionalProperties": { "$ref": "#/$defs/ObjectiveEntry" }
+    },
+    "regions": {
+      "type": "object",
+      "description": "World-region catalog from Global.Instance.Regions, keyed by stringified WorldRegion.ID. Regions group scenes (e.g. \"tundra\", \"desert\", \"city\") and define playable level pools.",
+      "additionalProperties": { "$ref": "#/$defs/Region" }
+    },
+    "enemies": {
+      "type": "object",
+      "description": "Enemy catalog from EnemyClass ScriptableObjects, keyed by EnemyClass.ID stringified. Includes full per-enemy combat stats (movement, melee, ragdoll, navigation, limb regrowth) under Config.",
+      "additionalProperties": { "$ref": "#/$defs/Enemy" }
+    },
+    "statusEffects": {
+      "type": "object",
+      "description": "Status-effect catalog (StatusEffectData ScriptableObjects), keyed by effectID (e.g. \"el_fire\", \"el_acid\", \"el_decay\"). Carries display metadata, color theming, and stage counts; numerical effect math (DPS, durations) is encoded on consumer code rather than the SO.",
+      "additionalProperties": { "$ref": "#/$defs/StatusEffect" }
+    },
+    "stacks": {
+      "type": "object",
+      "description": "Stacking modifier catalog (PlayerStackData), keyed by internal stack name (e.g. \"scrap\", \"wildfire\", \"dmr_boost\"). Defines how player buffs/debuffs accumulate, decay, and time out.",
+      "additionalProperties": { "$ref": "#/$defs/Stack" }
+    },
+    "threats": {
+      "type": "object",
+      "description": "Threat-tier catalog (ThreatData), keyed by internal threat name (\"threat1\" through \"threat7\"). Drives mission difficulty scaling and per-tier reward pools.",
+      "additionalProperties": { "$ref": "#/$defs/Threat" }
+    },
+    "missionModifiers": {
+      "type": "object",
+      "description": "Mission-modifier catalog (MissionModifier subclasses including MissionModifierGeneric, MissionModifierWaveModifier, and game-specific modifiers like MissionModifierHorde), keyed by stringified ID. Used by the weekly mission-modifier rotation system.",
+      "additionalProperties": { "$ref": "#/$defs/MissionModifier" }
+    },
+    "lootPools": {
+      "type": "object",
+      "description": "Weighted upgrade pools used by mission rewards (e.g. via `LevelUnlock_LootPool.LootPool`). Keyed by ScriptableObject asset name (e.g. \"Amalg1Upgrades\", \"Amalg1Skins\").",
+      "additionalProperties": { "$ref": "#/$defs/LootPool" }
+    },
+    "localization": {
+      "type": "object",
+      "description": "Master localization table dumped from `TextBlocks.strings` — the single dictionary every game-displayed string flows through (`TextBlocks.GetString(key)`). Keys are short identifiers; values are arrays of text blocks. Stat labels: `force` → \"Force\", `dam_min` → \"Min Damage\", `firerate` → \"Fire Rate\", etc. Per-upgrade entries: each upgrade has a localization entry keyed by its `APIName` with `[0] = Name` and `[1] = Description` (when present). Currently English-only — Mycopunk's runtime loads one locale at game start.",
+      "additionalProperties": { "$ref": "#/$defs/Localization" }
+    },
+    "player": {
+      "$ref": "#/$defs/PlayerBase",
+      "description": "Singleton dump of the player MonoBehaviour prefab. Holds every base movement/health/wallrun/slide/clamber/jump/gravity/acceleration parameter. One entry — the player rig is shared across all four characters; per-character variation comes from upgrades and skill tree, not from this base."
+    },
+    "authItems": {
+      "type": "object",
+      "description": "AuthItem catalog — in-fiction \"redemption code\" items. 4 entries (auth_bruiser, auth_glider, auth_scrapper, auth_wrangler), each granting its character + a starter upgrade. Keyed by item ID.",
+      "additionalProperties": { "$ref": "#/$defs/AuthItem" }
+    },
+    "patternPaths": {
+      "type": "object",
+      "description": "Special hex-grid pattern definitions. 7 entries. When the upgrade grid contains the pattern, the player gets the listed `Rewards`. Keyed by stringified `ID`.",
+      "additionalProperties": { "$ref": "#/$defs/PatternPath" }
+    },
+    "threatProfiles": {
+      "type": "object",
+      "description": "Per-threat-level scaling curves (ThreatModifierProfile). Each profile's `Threats` array is indexed 0..6 (threat1..threat7). Used by various game systems to scale e.g. modifier chances, reward rates, and enemy stats with mission threat. Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/ThreatProfile" }
+    },
+    "customWaves": {
+      "type": "object",
+      "description": "Wave-composition specs (CustomWave subclasses, primarily GenericCustomWave). Used by the spawn system to control the enemy mix per mission/event: tag filters, type filters, weighted chances, count multipliers, room-size constraints. Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/CustomWave" }
+    },
+    "collectables": {
+      "type": "object",
+      "description": "World-collectable definitions (CollectableProfile). When the player fully collects a target (e.g. a pump), the `Rewards` list fires. Keyed by `nameID`.",
+      "additionalProperties": { "$ref": "#/$defs/Collectable" }
+    },
+    "enemyGroups": {
+      "type": "object",
+      "description": "Weighted groupings of `EnemyClass` values (EnemyClassGroup). Used by the spawn system to vary enemy mix within a single EnemyType. Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/EnemyGroup" }
+    },
+    "globalEvents": {
+      "type": "object",
+      "description": "Timed/seasonal global events (e.g. Amalgamation Hunt, Corp Contest). Each has progress thresholds, end-mission cross-references, reward lists, and subclass-specific tunables. Keyed by event ID.",
+      "additionalProperties": { "$ref": "#/$defs/GlobalEvent" }
+    },
+    "playerUpgrades": {
+      "type": "object",
+      "description": "Non-grid player upgrades — character movement abilities (AirDashUpgrade for Wrangler, NoseDiveUpgrade for Bruiser, JetpackUpgrade for Scrapper, plus skill-tree movement modifiers like Blink, DiveCancel, Splash Zone). Each entry's `RawData` carries the full prefab data including `Cooldown` config and ability-specific nested Data structs. Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/PlayerUpgradeEntry" }
+    },
+    "statusEffectGlobals": {
+      "$ref": "#/$defs/StatusEffectGlobals",
+      "description": "Shared status-effect tuning constants (compile-time inlined in `StatusEffect.cs`)."
+    },
+    "formulas": {
+      "$ref": "#/$defs/Formulas",
+      "description": "Hardcoded progression formulas (XP curves) extracted from decompiled source — not runtime-readable as data fields."
+    },
+    "achievements": {
+      "type": "array",
+      "description": "Steam achievement IDs scraped from `Online.UnlockAchievement(...)` call sites. No external catalog exists; the strings are scattered through gameplay code.",
+      "items": { "type": "string" }
+    },
+    "steamStats": {
+      "type": "array",
+      "description": "Steam stat IDs the game tracks (player progression metrics). Scraped from `Online.SetStat`/`SubmitGlobalStat` call sites.",
+      "items": { "type": "string" }
+    },
+    "rarities": {
+      "type": "object",
+      "description": "Master rarity/cost table. Per-rarity scrip cost, rare-resource cost, Ouroboros cleanse cost, saxonite craft-new cost, plus colors and the cross-referenced scrap PlayerResource. 6 entries: `standard`, `rare`, `epic`, `exotic`, `contraband`, `oddity`. Sourced from `Global.Instance.Rarities`. Keyed by `Name`.",
+      "additionalProperties": { "$ref": "#/$defs/RarityEntry" }
+    },
+    "missionContainers": {
+      "type": "object",
+      "description": "Mission-container variants — modes that wrap regular mission selection. 2 entries: `DefaultMissionContainer` and `Overtime Assignment` (the weekly mode with its scheduled modifier calendar inside `RawData.weekData`). Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/MissionContainerEntry" }
+    },
+    "encounters": {
+      "type": "object",
+      "description": "IEncounter catalog — the procedural-mission spawn rules. 20 entries (Crater, Pipeline, Water, Meatspawn, Upgrade Drone, Lost Saxitos, Arc Gates, Scorched Transponder, Eye Wall, …). Mixed `UnityEngine.Object[]` (some entries are SO impls, others are GameObject prefabs whose component implements IEncounter). Per-encounter parameters live in `RawData`. Keyed by asset name; cross-referenced via `@ref:\"encounter:<Name>\"`.",
+      "additionalProperties": { "$ref": "#/$defs/EncounterEntry" }
+    },
+    "quips": {
+      "type": "object",
+      "description": "Master player emote/quip catalog. 63 entries across 4 characters; the same `Label` can repeat across characters so the keys here are the numeric `ID` stringified. Each entry has the spoken voiceline ID (resolves in `localization`), animation clip names, and the character it belongs to.",
+      "additionalProperties": { "$ref": "#/$defs/QuipEntry" }
+    },
+    "crafting": {
+      "$ref": "#/$defs/Crafting",
+      "description": "Master crafting price table. Singleton: there is exactly one `CraftingWindow` prefab in the game."
+    },
+    "dialogue": {
+      "$ref": "#/$defs/DialogueData",
+      "description": "Mission-control / crew dialogue system: the exchange catalog (id → trigger + lines + character refs) plus the per-trigger probability table."
+    },
+    "upgradePresets": {
+      "type": "object",
+      "description": "Named bundles of `UpgradeProperty` overrides referenced by `SkinUpgradeProperty_Preset.preset` (e.g. \"Coppertone\", \"Bloodmetal\", \"Glittering\"). Each preset's `Modifiers` mirrors `Skin.Modifiers` so a consumer can answer \"what does Glittering do?\" without parsing `RawData`. Catalog source: `Resources.FindObjectsOfTypeAll<UpgradePreset>()`. Keyed by SO asset name.",
+      "additionalProperties": { "$ref": "#/$defs/UpgradePresetEntry" }
+    }
+  },
+
+  "$defs": {
+    "Upgrade": {
+      "type": "object",
+      "description": "A single upgrade definition (a hex-grid module that modifies gear or characters).",
+      "required": ["ID", "APIName", "Name", "EffectType", "UpgradeType", "Rarity", "Flags", "Color", "ApplicableTo"],
+      "properties": {
+        "ID": {
+          "type": "string",
+          "description": "Stringified UpgradeID — vanilla bare integer, modded \"<Mod>:<ID>\". Matches the parent map's key.",
+          "examples": ["99770", "-1007096"]
+        },
+        "APIName": {
+          "type": "string",
+          "description": "Stable internal API name (snake_case-ish, often matches asset filename).",
+          "examples": ["adrenaline_reload", "globblometer"]
+        },
+        "Name": {
+          "type": "string",
+          "description": "Localized display name. May include rich-text tags (<color=...>, <link=...>)."
+        },
+        "EffectType": {
+          "type": "string",
+          "description": "Effect-element classification (Normal, Fire, Acid, Electric, etc.) — enum stringified."
+        },
+        "UpgradeType": {
+          "type": "string",
+          "description": "Upgrade category (Normal, Skin, etc.) — Upgrade+Type enum stringified."
+        },
+        "Rarity": {
+          "type": "string",
+          "description": "Rarity tier (Standard, Rare, Epic, Exotic)."
+        },
+        "Flags": {
+          "type": "string",
+          "description": "Comma-separated flag-enum string from UpgradeFlags (e.g. \"CanStack, CanStackInMission\")."
+        },
+        "Color": {
+          "type": "string",
+          "description": "Theme color as Unity RGBA(r, g, b, a) string."
+        },
+        "Description": {
+          "type": "string",
+          "description": "Localized in-game description with rich-text markup."
+        },
+        "MustBeUnlockedFirst": {
+          "type": ["string", "null"],
+          "description": "Display string of a prerequisite upgrade that must be unlocked before this one. Stringified at dump time; can be cross-referenced by Name."
+        },
+        "Pattern": { "$ref": "#/$defs/HexMap" },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "Skin": {
+          "$ref": "#/$defs/DSkin",
+          "description": "Cosmetic-specific data, populated only when `UpgradeType` == `\"Cosmetic\"` (i.e. the upgrade is a `SkinUpgrade`). Aggregates fields scattered across `SkinUpgrade` and its `SkinUpgradeProperty` subclasses."
+        },
+        "Properties": {
+          "type": "array",
+          "description": "Per-property data for this upgrade. Each entry pairs a property class name (Type) with the raw Unity-serialized config (Raw) and a per-upgradable expansion of evaluated stats (StatsByUpgradable).",
+          "items": { "$ref": "#/$defs/UpgradeDProperty" }
+        },
+        "UnlockCost": {
+          "type": "array",
+          "description": "Resources required to unlock this upgrade.",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        },
+        "AdditionalUnlockCost": {
+          "type": ["array", "null"],
+          "description": "Secondary cost surface (e.g. crafting cost on top of the unlock cost).",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        },
+        "ApplicableTo": {
+          "type": "array",
+          "description": "List of upgradables that can equip this upgrade. Each entry's APIName is a key into gears or characters. The Name is human-readable (\"<DisplayName> (<C# class>)\").",
+          "items": { "$ref": "#/$defs/DUpgradeable" }
+        },
+        "Priority": {
+          "type": "integer",
+          "description": "Display sort priority; the upgrade browser sorts ascending by this."
+        },
+        "CollectionSource": {
+          "type": "string",
+          "description": "How the upgrade is obtained.",
+          "enum": ["WorldPool", "None", "UpgradeTree", "DropsFromSource", "HiddenAlways", "HiddenIfNotOwned", "Beta", "LevelUp", "Resources"]
+        },
+        "IsModded": {
+          "type": "boolean",
+          "description": "True for upgrades introduced by mods (non-empty UpgradeID.Mod)."
+        },
+        "ModGUID": {
+          "type": "string",
+          "description": "BepInEx plugin GUID that registered this upgrade. Empty for vanilla."
+        },
+        "TurbochargeCost": {
+          "type": "array",
+          "description": "Resources required to turbocharge this upgrade (Upgrade.GetTurbochargeCost() result). Exotic upgrades have a flat formula (100 of each rare-fungi + 1 strange components); other rarities pull from a seeded random selection. Always populated; values vary by Rarity and NumberID seed.",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        },
+        "OuroborosCost": {
+          "type": "array",
+          "description": "Cost to take this upgrade in Ouroboros mode (Upgrade.GetOuroborosCost()). Formula: 5 + Rarity*2 ouroscrap (Standard=5, Rare=7, Epic=9, Exotic=11).",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        }
+      }
+    },
+
+    "UpgradeDProperty": {
+      "type": "object",
+      "description": "One UpgradeProperty instance attached to an upgrade.",
+      "required": ["Type"],
+      "properties": {
+        "Type": {
+          "type": "string",
+          "description": "C# class name of the concrete UpgradeProperty subclass, e.g. UpgradeProperty_SMG_FastReloadOnKill."
+        },
+        "Label": {
+          "type": "string",
+          "description": "Human-readable form of `Type` — strips the `UpgradeProperty_` prefix and splits CamelCase / underscores. E.g. `UpgradeProperty_Bruiser_Cannonball` → \"Bruiser Cannonball\", `UpgradeProperty_AmmoCapacity` → \"Ammo Capacity\". Convenience field for UI display."
+        },
+        "StatNames": {
+          "type": "array",
+          "description": "Distinct stat labels this property emits via `GetStatData()` (sorted, with rich-text tags stripped). For example `UpgradeProperty_Bruiser_Cannonball` emits stats labelled `Force`, `Min Damage`, `Max Damage`, `Min Radius`, `Max Radius`. Empty (or absent) when the property modifies behavior without producing tooltip stats. **Note:** the game's tooltip ALSO renders text from `ModifyProperties` — see `ModifyTextLines` for that second source.",
+          "items": { "type": "string" }
+        },
+        "ModifyTextByUpgradable": {
+          "type": "object",
+          "description": "Free-form tooltip text produced by `UpgradeProperty.ModifyProperties(ref string, ...)` — the second tooltip source after `StatData`. Captured by invoking the method against each upgradable that can equip this upgrade. Often blank, but for some properties this is the ONLY place the meaningful stat label shows up. Examples: the four Mini Cannon Prism upgrades all share `UpgradeProperty_MiniCannon_Prism` with `StatNames: [\"Efficiency\"]`, but each Prism's actual color-coded stat (`Range`, `Spread`, `Fire Rate`, `Damage`) is only here. Values include rich-text color tags as the game would render them; consumers wanting plain text should use `ModifyTextLines`.",
+          "additionalProperties": { "type": "string" }
+        },
+        "ModifyTextLines": {
+          "type": "array",
+          "description": "Distinct lines pulled from `ModifyTextByUpgradable` with rich-text tags stripped, sorted. Use for indexing/filtering upgrades by their actual displayed labels.",
+          "items": { "type": "string" }
+        },
+        "LocalizationKeys": {
+          "type": "array",
+          "description": "Every localization key (`TextBlocks.GetString` argument) that this property's source code references — including keys hidden behind switch expressions or conditional branches that runtime sampling can't trigger. Extracted by static analysis of the decompiled property class. Cross-reference into the top-level `localization` map. Only present when the optional `mise run extract-labels` step has produced `property-labels.json`. Example: `UpgradeProperty_MiniCannon_Prism` has keys `[\"damage\", \"efficiency\", \"firerate\", \"range\", \"spread\"]` covering all four prism-rarity branches.",
+          "items": { "type": "string" }
+        },
+        "Raw": {
+          "description": "Unity-serialized config for the property — fields and values vary per subclass. Serialized via UnityEngine.JsonUtility.ToJson, so the structure is whatever the property's [SerializeField] schema exposes."
+        },
+        "StatsByUpgradable": {
+          "type": "object",
+          "description": "Evaluated stat data per upgradable that can equip this upgrade. Keys are upgradable APINames (matching gears / characters); values are the ordered output of UpgradeProperty.GetStatData(...) seeded with 0 — a single representative roll. For random/categorical stats see `RolledValuesByUpgradable`.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/StatData" }
+          }
+        },
+        "RolledValuesByUpgradable": {
+          "type": "object",
+          "description": "Distinct stat `value` strings observed across 16 deterministic seeded samples of `GetStatData(...)` per upgradable. Captures the full set of outcomes for stats that roll non-deterministically — most importantly **categorical** rolls like the random element from `GetRandomEffect()` returning `{Fire, Shock, Acid}` (or `{Normal, Fire, Shock, Acid}` for `GetRandomEffectIncludingNormal()`). Outer key: upgradable APIName. Inner key: stat name (rich-text intact). Inner value: sorted array of all observed `value` strings (rich-text intact). Only stats where >1 distinct value was seen are recorded — deterministic stats are absent. Numeric stats may also appear, in which case the array shows the distribution of sampled values within the existing `minValue`/`maxValue` range (useful for distribution analysis; redundant with the range if you don't need it).",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "StatData": {
+      "type": "object",
+      "description": "A single labelled stat shown in the upgrade tooltip. Game type StatData from UnityEngine.JsonUtility.",
+      "properties": {
+        "name": { "type": "string", "description": "Stat label, may include rich-text color tags." },
+        "value": { "type": "string", "description": "Display value (often pre-formatted, e.g. \"+7\", \"x1.25\")." },
+        "minValue": { "type": "string", "description": "Lower-bound display value (when the stat rolls in a range)." },
+        "maxValue": { "type": "string", "description": "Upper-bound display value." },
+        "labelType": { "type": "integer", "description": "Game-internal StatData+LabelType enum." },
+        "overrideType": { "type": "integer", "description": "Game-internal OverrideType enum." },
+        "placeAtEnd": { "type": "boolean", "description": "UI hint — render this stat after others." },
+        "stackMessage": { "type": "string", "description": "Optional message shown when the stat stacks." },
+        "boostParams": {
+          "type": "object",
+          "description": "Boost behavior parameters (e.g. when an upgrade is turbocharged).",
+          "properties": {
+            "cannotBeBoosted": { "type": "boolean" },
+            "minIsBetter": { "type": "boolean" }
+          }
+        },
+        "IsValid": { "type": "boolean", "description": "Whether the stat is renderable; some entries are LineBreak() separators." }
+      }
+    },
+
+    "DUpgradeable": {
+      "type": "object",
+      "description": "A back-reference from an upgrade to a gear/character that can equip it.",
+      "required": ["Name", "APIName"],
+      "properties": {
+        "Name": { "type": "string", "description": "Human-readable form, \"<DisplayName> (<C# class>)\", e.g. \"Bruiser (Character)\"." },
+        "APIName": {
+          "type": "string",
+          "description": "Canonical key into gears or characters. Note: prior to v2.0 this was the C# class name (collapsing all four characters under \"Character\"); it now uses GearInfo.APIName.",
+          "examples": ["smg", "wrangler"]
+        }
+      }
+    },
+
+    "DUnlockCost": {
+      "type": "object",
+      "description": "One line item in an unlock cost (resource + count).",
+      "required": ["Count"],
+      "properties": {
+        "Count": { "type": "integer", "description": "Number of units required." },
+        "Resource": { "type": "string", "description": "Display name of the resource (e.g. \"Saxonite\"). Legacy field; matches PlayerResource.Name." },
+        "ResourceID": { "type": "string", "description": "Canonical key into resources (e.g. \"saxonite\"). Added in v2.0; prefer this over Resource for cross-referencing." }
+      }
+    },
+
+    "DIcon": {
+      "type": "object",
+      "description": "Sprite icon reference. The dump does not embed the sprite image — it stores only the texture-atlas name and source rect, so consumers must fetch the actual texture from the game install separately.",
+      "properties": {
+        "Rect": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Source rect within the parent texture, in pixels: [xMin, yMin, width, height].",
+          "items": { "type": "number" }
+        },
+        "Texture": { "type": "string", "description": "Name of the texture-atlas asset." }
+      }
+    },
+
+    "DSkin": {
+      "type": "object",
+      "description": "Cosmetic-only fields on a `SkinUpgrade`. Composed of three layers: SkinUpgrade-level scalars (BaseSkin/CountWithInCodex/ChanceToRemoveFromPool/ColorIcon/ChangeHueIfNoModifiersApplied/OverridesPattern), runtime-derived flags (HasVfx/HasCrab/HasCharacterModel/NameModifiers), and per-property summaries (Modifiers[]). `Previews` is a deterministic relative-path map shaped to match the skin renderer's output; the file existing on disk depends on whether the renderer has run.",
+      "properties": {
+        "BaseSkin": { "type": "string", "description": "Upgrade key — parent skin this inherits visuals from (or absent for root skins). Lookup target in the parent `upgrades` map." },
+        "CountWithInCodex": { "type": "string", "description": "Upgrade key — codex-collection alias (e.g. \"Factory\" and \"Factory (Bloodmetal)\" share a single codex slot). Lookup target in `upgrades`." },
+        "ChanceToRemoveFromPool": { "type": "number", "description": "0..1 — probability this skin is removed from the world drop pool after rolling once." },
+        "ColorIcon": { "type": "boolean", "description": "Whether the icon is tinted by the skin color at render time." },
+        "ChangeHueIfNoModifiersApplied": { "type": "boolean" },
+        "OverridesPattern": { "type": "boolean", "description": "True when `SkinUpgrade.overridePattern` is set — the skin tree uses a non-default `HexMapProfile`. Default is `Global.Instance.SkinPattern`." },
+        "HasVfx": { "type": "boolean", "description": "Any VFX-spawning property is present (GunCrab-derived, VFXMod, VFXCustomProp). Skins with this flag run a `VisualEffect` that needs manual ticking when `Time.timeScale = 0`." },
+        "HasCrab": { "type": "boolean", "description": "Any GunCrab-derived property — the gun gets a crab/eye/pump/roach companion prop spawned next to it." },
+        "HasCharacterModel": { "type": "boolean", "description": "Any `SkinUpgradeProperty_CharacterModel` — replaces the player's first/third-person mesh." },
+        "IconAtlas": { "$ref": "#/$defs/DIconAtlas" },
+        "NameModifiers": {
+          "type": "array",
+          "description": "Distinct instance-name modifier suffixes observed via deterministic seed sweep over `SkinUpgrade.GetInstanceName(seed)` for seeds 0..63. Entries are the parenthesised inner part — e.g. \"Bloodmetal\", \"Spectral, Sapphire\". Useful for UI dropdowns and codex grouping.",
+          "items": { "type": "string" }
+        },
+        "Modifiers": {
+          "type": "array",
+          "description": "Per-property summary. Walked over `SkinUpgrade.GetProperties()` (which inlines properties inherited from `BaseSkin`). Each entry resolves the most useful subclass-specific fields; consumers that need everything can fall back to the corresponding `Properties[i].Raw` on the parent upgrade.",
+          "items": { "$ref": "#/$defs/DSkinModifier" }
+        },
+        "Previews": {
+          "type": "object",
+          "description": "Per-(gear, preset) relative paths to rendered mp4 turntables. Outer key: gear APIName (matches `gears`/`characters`). Inner key: preset slug — `\"base\"` for the no-preset rotation, otherwise the sanitized preset SO name (matches the slug used by the SkinRenderer task). Value: path relative to the base extracted-dump directory (e.g. `~/MycopunkExtracted/<version>/`). The file at the path may or may not exist depending on whether the renderer has run; the path is computed from the slug pattern, not from disk.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "examples": [{ "wrangler": { "base": "skin-previews/wrangler_Factory__base/wrangler_Factory__base.mp4", "Bloodmetal": "skin-previews/wrangler_Factory__Bloodmetal/wrangler_Factory__Bloodmetal.mp4" } }]
+        }
+      }
+    },
+
+    "DIconAtlas": {
+      "type": "object",
+      "description": "Raw atlas-cropping data so consumers can pull the source pixels from the original sprite sheet without re-running `Sprite.Create`. Position/Size are pre-scaling; the actual displayed rect is `position * (atlasWidth / TextureSize)`, `size * (atlasWidth / TextureSize)` (see `SkinUpgrade.Icon` getter).",
+      "properties": {
+        "Texture": { "type": "string", "description": "Source `Texture2D` asset name." },
+        "TextureSize": { "type": "integer", "description": "`SkinUpgrade.textureSize` (defaults to 4096) — divisor for the position/size scale factor against the actual atlas resolution." },
+        "Position": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[x, y] in atlas pixel-coordinates (pre-scaling).",
+          "items": { "type": "number" }
+        },
+        "Size": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[w, h] in atlas pixel-coordinates (pre-scaling).",
+          "items": { "type": "number" }
+        }
+      }
+    },
+
+    "DSkinModifier": {
+      "type": "object",
+      "description": "Resolved summary of one `SkinUpgradeProperty` (or any `UpgradeProperty`) entry. Field families are mutually exclusive — only fields tagged for the property's `Type` are populated, the rest are absent. Fall back to the parent's `Properties[i].Raw` when this summary doesn't cover the field you need.",
+      "required": ["Type"],
+      "properties": {
+        "Type": { "type": "string", "description": "Concrete C# class name (e.g. \"SkinUpgradeProperty_Trim\")." },
+        "Chance": { "type": ["number", "null"], "description": "Roll chance (0..1). Null when the subclass doesn't expose one OR when chance is meaningless because the property always applies (`SkinUpgradeProperty_Texture`/`_Color` whose `GetPropertyChance` is constant 1)." },
+        "CurveConstant": { "type": ["boolean", "null"], "description": "True when the property's `AnimationCurve` evaluates to the same value at 0 and 1 — i.e. the curve is acting as a chance gate rather than a roll distribution. Null when no curve is present." },
+        "CurveStart": { "type": "number", "description": "`curve.Evaluate(0)` — start of the rolled-value distribution." },
+        "CurveEnd": { "type": "number", "description": "`curve.Evaluate(1)` — end of the rolled-value distribution." },
+
+        "TrimID": { "type": "string", "description": "SkinUpgradeProperty_Trim — TextBlocks key for the trim's display name." },
+        "TrimName": { "type": "string", "description": "Resolved trim name (e.g. \"Sapphire\", \"Topaz\")." },
+        "TrimColor": { "type": "string", "description": "RGBA(...) — base trim color." },
+        "TrimSpecular": { "type": "string", "description": "RGBA(...) — specular tint applied alongside trimColor." },
+        "TrimHueChance": { "type": "number", "description": "0..1 — chance the trim's hue is shifted instead of using the literal trimColor." },
+        "TrimMaxHue": { "type": "number", "description": "-1..1 — max hue-shift magnitude when the hue roll fires." },
+        "TrimFlip": { "type": "boolean" },
+        "TrimAlpha": { "type": "boolean" },
+
+        "Preset": { "type": "string", "description": "SkinUpgradeProperty_Preset — `UpgradePreset` SO asset name. Lookup target in the top-level `upgradePresets` map." },
+
+        "TextureFind": { "type": "string", "description": "SkinUpgradeProperty_Texture — name of the source Material the texture-replacement targets (\"find this material, swap it\")." },
+        "TextureMain": { "type": "string", "description": "Replacement albedo `Texture2D` asset name." },
+        "TextureSpecular": { "type": "string", "description": "Replacement specular `Texture2D` asset name." },
+        "TextureOverrideColor": { "type": "boolean" },
+        "TextureColor": { "type": "string", "description": "RGBA(...) — only meaningful when `TextureOverrideColor` is true." },
+        "TextureShadowColor": { "type": "string", "description": "RGBA(...) — only meaningful when `TextureOverrideColor` is true." },
+        "TextureOverrideSpecularColor": { "type": "boolean" },
+        "TextureSpecularColor": { "type": "string", "description": "RGBA(...) — only meaningful when `TextureOverrideSpecularColor` is true." },
+        "TextureOverrideSmoothness": { "type": "boolean" },
+        "TextureSmoothness": { "type": "number", "description": "Only meaningful when `TextureOverrideSmoothness` is true." },
+
+        "ColorPrimary": { "type": "string", "description": "SkinUpgradeProperty_Color — RGBA(...) primary tint applied to `_Color` shader prop." },
+        "ColorShadow": { "type": "string", "description": "RGBA(...) shadow tint applied to `_ShadowColor`." },
+        "ColorMaterialMin": { "type": "integer", "description": "`Range<int> materialRange.min` — restricts which override-mat indices receive the tint." },
+        "ColorMaterialMax": { "type": "integer" },
+
+        "ChromaSunBrightness": { "type": "number", "description": "SkinUpgradeProperty_Chroma." },
+        "ChromaShadowBrightness": { "type": "number" },
+
+        "EmissiveStatID": { "type": "string", "description": "SkinUpgradeProperty_Emissive — TextBlocks key for the modifier's display name." },
+        "EmissiveStatName": { "type": "string", "description": "Resolved name." },
+        "EmissiveColor": { "type": "string", "description": "RGBA(HDR)." },
+        "EmissiveHueChance": { "type": "number" },
+        "EmissiveMaxHue": { "type": "number" },
+        "EmissiveFlipTrim": { "type": "boolean" },
+
+        "NeonRed": { "type": "number", "description": "SkinUpgradeProperty_Neon — channel intensity per primary." },
+        "NeonGreen": { "type": "number" },
+        "NeonBlue": { "type": "number" },
+        "NeonYellow": { "type": "number" },
+        "NeonMagenta": { "type": "number" },
+        "NeonFlipTrim": { "type": "boolean" },
+
+        "Contrast": { "type": "number", "description": "SkinUpgradeProperty_Contrast — contrast value applied uniformly." },
+
+        "ContrastRangeLabelID": { "type": "string", "description": "SkinUpgradeProperty_ContrastRange." },
+        "ContrastRangeLabel": { "type": "string", "description": "Resolved." },
+
+        "OverlayID": { "type": "string", "description": "SkinUpgradeProperty_Overlay only (Empty for `_OverlayMat`). TextBlocks key for the overlay's display name." },
+        "OverlayLabel": { "type": "string", "description": "Resolved overlay label." },
+        "OverlayTexture": { "type": "string", "description": "`overlayTex` asset name (both _Overlay and _OverlayMat)." },
+        "OverlayBoost": { "type": "number", "description": "_Overlay only." },
+        "OverlayTile": { "type": "number" },
+        "OverlayTriplanar": { "type": "boolean" },
+
+        "TrickColor": { "type": "string", "description": "SkinUpgradeProperty_TrickOrTreat — RGBA(...)." },
+        "TreatColor": { "type": "string", "description": "RGBA(...)." },
+        "TrickHueChance": { "type": "number" },
+        "TrickRandHueIntensity": { "type": "number" },
+        "TrickFlipTrim": { "type": "boolean" },
+
+        "InfectionScale": { "type": "number", "description": "SkinUpgradeProperty_Infection." },
+
+        "CrabModel": { "type": "string", "description": "SkinUpgradeProperty_GunCrab (and subclasses) — `crab` GameObject prefab asset name." },
+        "CrabUpgrade": { "type": "string", "description": "Upgrade key (`SkinUpgradeProperty_GunCrab.myUpgrade`). Lookup in `upgrades`." },
+        "CrabMeshes": {
+          "type": "array",
+          "description": "SkinUpgradeProperty_GunCrab_List — pool of mesh asset names the crab variant rolls between.",
+          "items": { "type": "string" }
+        },
+
+        "VfxCrabNameID": { "type": "string", "description": "SkinUpgradeProperty_VFXCrab — TextBlocks key for the VFX variant's display name." },
+        "VfxCrabName": { "type": "string", "description": "Resolved." },
+        "VfxCrabNameColor": { "type": "string", "description": "Rarity-enum stringified — name display tier." },
+        "VfxCrabSizeOverride": { "type": "number", "description": "-1 = no override; otherwise overrides the prefab VFX `Size` parameter." },
+        "VfxCrabIntensityOverride": { "type": "number" },
+        "VfxCrabRateOverride": { "type": "number" },
+        "VfxCrabLongevityOverride": { "type": "number" },
+        "VfxCrabOverrideSpeed": { "type": "boolean" },
+        "VfxCrabSpeedOverride": { "type": "number" },
+        "VfxCrabOverrideColor": { "type": "boolean" },
+        "VfxCrabColor1": { "type": "string", "description": "RGBA(HDR) — only meaningful when `VfxCrabOverrideColor` is true." },
+        "VfxCrabColor2": { "type": "string", "description": "RGBA(HDR) — only meaningful when `VfxCrabOverrideColor` is true." },
+        "VfxCrabAlphaOverride": { "type": "number" },
+
+        "VfxCustomPropName": { "type": "string", "description": "SkinUpgradeProperty_VFXCustomProp — name of the VFX shader/expression property being overridden." },
+        "VfxCustomPropType": { "type": "string", "description": "Float / Float2 / Float3 / Float4." },
+        "VfxCustomPropValue": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Vector4 unpacked to [x, y, z, w]. Only the first N components are meaningful per `VfxCustomPropType`.",
+          "items": { "type": "number" }
+        },
+
+        "CharacterModelArmL": { "type": "string", "description": "SkinUpgradeProperty_CharacterModel — `firstPersonArmL` SkinnedMeshRenderer mesh asset name." },
+        "CharacterModelArmR": { "type": "string", "description": "`firstPersonArmR` mesh asset name." },
+        "CharacterModelThirdPerson": { "type": "string", "description": "`thirdPersonMesh` mesh asset name." }
+      }
+    },
+
+    "UpgradePresetEntry": {
+      "type": "object",
+      "description": "A named bundle of `UpgradeProperty` overrides referenced by `SkinUpgradeProperty_Preset.preset`. When a preset's parent `chance` roll succeeds, its inner `properties` list is applied on top of the parent skin (substituting one slot via `RandomContainerRange`).",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "description": "SO asset name. Matches the parent map's key." },
+        "OverrideNameModifier": { "type": "string", "description": "Suffix applied to a parent skin's display name when this preset rolls (e.g. \"Coppertone\" → \"Factory (Coppertone)\"). TextBlocks-resolved at runtime." },
+        "NameModifierColor": { "type": "string", "description": "Hex color tag the modifier name is wrapped in (e.g. `f40857`)." },
+        "ShowNameInStats": { "type": "boolean" },
+        "RandomContainerRangeMin": { "type": "integer", "description": "Inclusive lower bound for the index-substitution roll inside the preset's property list. When `min == max`, no substitution happens; otherwise one entry in `[min, max]` replaces the entry at `min`." },
+        "RandomContainerRangeMax": { "type": "integer" },
+        "Modifiers": {
+          "type": "array",
+          "description": "Resolved per-property summary of the preset's own `UpgradePropertyList`. Same shape as `Skin.Modifiers` — answers \"what does this preset do?\" without parsing `RawData`.",
+          "items": { "$ref": "#/$defs/DSkinModifier" }
+        },
+        "RawData": {
+          "type": "object",
+          "description": "Full `UpgradePreset` ScriptableObject serialized via Unity `JsonUtility`. Captures the inner `properties: UpgradePropertyList` (each entry an `UpgradeProperty` subclass — colors, trim refs, texture overrides — same shape as per-skin properties)."
+        }
+      }
+    },
+
+    "HexMap": {
+      "type": "object",
+      "description": "Hex-grid pattern of an upgrade or grid layout. Serialized via UnityEngine.JsonUtility.",
+      "properties": {
+        "width": { "type": "integer", "description": "Number of columns." },
+        "height": { "type": "integer", "description": "Number of rows." },
+        "nodes": {
+          "type": "array",
+          "description": "Row-major 2D grid of node arrays. Each cell carries an enabled flag and a bitmask of edge connections to neighboring cells.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": { "type": "boolean" },
+                    "connections": { "type": "integer", "description": "Bitmask of edge connections (6 bits, one per hex side)." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "Gear": {
+      "type": "object",
+      "description": "A non-character upgradable (weapon, grenade, utility, vehicle, etc.).",
+      "required": ["ID", "Name", "APIName", "GearType"],
+      "properties": {
+        "ID": { "type": "string", "description": "Numeric GearInfo.ID stringified." },
+        "Name": { "type": "string", "description": "Localized display name." },
+        "APIName": { "type": "string", "description": "Canonical key (matches the parent map's key)." },
+        "TypeName": { "type": "string", "description": "Subtype description shown in UI (e.g. \"Accelerating Burst SMG\")." },
+        "Description": { "type": "string", "description": "Localized in-game description with rich-text markup." },
+        "GearType": {
+          "type": "string",
+          "description": "Category enum stringified.",
+          "enum": ["Primary", "Heavy", "Utility", "Throwable", "Melee", "Character", "Vehicle", "Custom"]
+        },
+        "MaxLevel": { "type": "integer", "description": "Highest XP level the gear can reach." },
+        "MinUnlockLevel": { "type": "integer", "description": "Player level required before this gear becomes available." },
+        "UnlockAutomatically": { "type": "boolean", "description": "If true, unlocks without spending UnlockCost." },
+        "HideWhenNotCollected": { "type": "boolean", "description": "UI hint — hide from collection screens until obtained." },
+        "CanGainXP": { "type": "boolean", "description": "Whether the gear levels up via XP gain." },
+        "HasUpgradeGrid": { "type": "boolean", "description": "Whether the gear has an upgrade grid at all." },
+        "XPGainMultiplier": {
+          "type": "number",
+          "description": "Multiplier on XP gained. Note: stored as XPGainMultilier (sic) in the game; the dumper renames to the corrected spelling."
+        },
+        "DirectiveKillsMultiplier": { "type": "number", "description": "Multiplier on directive-kill counts when this gear is equipped." },
+        "SkinCount": { "type": "integer", "description": "Number of skin upgrades available for this gear." },
+        "UnlockCost": {
+          "type": "array",
+          "description": "Resources required to unlock the gear itself.",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        },
+        "GridSizes": {
+          "type": "array",
+          "description": "Upgrade-grid dimensions per gear level. Index 0 is base; higher indices are dimensions after each level-up reward expands the grid.",
+          "items": { "$ref": "#/$defs/GridSize" }
+        },
+        "LevelUnlocks": {
+          "type": "array",
+          "description": "Rewards granted at gear level-up milestones. The discriminator is Type.",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "RawData": {
+          "type": "object",
+          "description": "Full Unity-serialized prefab data — every `[SerializeField]` field on the gear's `MonoBehaviour`. Schema is per-gear-class and not formally typed here. Where to look for combat stats: guns have `gunData` (`damage`, `bulletSpeed`, `fireInterval`, `bulletsPerShot`, `magazineSize`, `ammoCapacity`, `reloadDuration`, `recoilData.*`, `spreadData.*`, `rangeData.maxDamageRange`); grenades have `gunData` + `cooldownData.rechargeDuration`; melee/throwables have analogous containers. Leaves of the form `{ \"instanceID\": N }` are references to other Unity assets. When the referenced asset is a top-level catalog entry, the dumper enriches the leaf with `\"@ref\": \"<type>:<key>\"` (e.g. `\"@ref\": \"upgrade:99770\"`, `\"@ref\": \"stack:scrap\"`) so consumers can resolve it without a separate index. Refs without `@ref` point to non-catalog assets (animation clips, materials, sprites, sounds) and are safe to ignore.",
+          "additionalProperties": true
+        }
+      }
+    },
+
+    "GridSize": {
+      "type": "object",
+      "description": "Upgrade-grid dimensions for a single gear level.",
+      "properties": {
+        "Width": { "type": "integer" },
+        "Height": { "type": "integer" }
+      }
+    },
+
+    "LevelUnlockEntry": {
+      "type": "object",
+      "description": "One reward entry from GearInfo.LevelUnlocks or DirectiveData.AdditionalRewards. Discriminated by Type. Fields beyond the common ones are populated based on the subclass — readers can treat absent fields as not applicable.",
+      "required": ["Type"],
+      "properties": {
+        "Type": {
+          "type": "string",
+          "description": "C# class name of the concrete LevelUnlock_* subclass.",
+          "enum": [
+            "LevelUnlock_Resource",
+            "LevelUnlock_MultipleUpgrades",
+            "LevelUnlock_UpgradeRarity",
+            "LevelUnlock_SkinRarity",
+            "LevelUnlock_SeededSkin",
+            "LevelUnlock_XP",
+            "LevelUnlock_Upgrade",
+            "LevelUnlock_LootPool",
+            "LevelUnlock_Skin",
+            "LevelUnlock_Gear",
+            "LevelUnlock_IntroUpgrade",
+            "LevelUnlock_Preview",
+            "LevelUnlock_RarityReward"
+          ]
+        },
+        "Level": { "type": "integer", "description": "Gear/directive level at which this reward is granted. For mission and directive rewards, often 0 (chance-based)." },
+        "Count": { "type": "integer", "description": "Number of times the reward fires." },
+        "Chance": { "type": "number", "description": "Probability (0..1) the reward triggers; 1.0 means deterministic, 0 means deterministic-but-weighted-elsewhere." },
+        "Resource": {
+          "$ref": "#/$defs/DUnlockCost",
+          "description": "Set on LevelUnlock_Resource. The reward is Count of Resource / ResourceID."
+        },
+        "PrioritizeUndiscovered": { "type": "boolean", "description": "Set on LevelUnlock_MultipleUpgrades. If true, the game prefers granting upgrades the player hasn't unlocked yet." },
+        "Upgrades": {
+          "type": "array",
+          "description": "Set on LevelUnlock_MultipleUpgrades. List of upgrade keys (matching keys in the top-level upgrades map). The reward grants Count of them, optionally weighted by PrioritizeUndiscovered.",
+          "items": { "type": "string" }
+        },
+        "Rarity": {
+          "type": "string",
+          "description": "Set on LevelUnlock_UpgradeRarity, LevelUnlock_SkinRarity, and LevelUnlock_RarityReward. Rarity tier of the upgrade/skin/reward granted. \"None\" appears for unspecified.",
+          "enum": ["Standard", "Rare", "Epic", "Exotic", "None"]
+        },
+        "XP": { "type": "integer", "description": "Set on LevelUnlock_XP. Amount of player XP granted." },
+        "Upgrade": { "type": "string", "description": "Upgrade key. Set on LevelUnlock_Upgrade (specific upgrade reward) and LevelUnlock_SeededSkin (specific SkinUpgrade)." },
+        "LootPool": { "type": "string", "description": "Set on LevelUnlock_LootPool. Name of the LootPool ScriptableObject from which a random reward is drawn." },
+        "MinLevel": { "type": "integer", "description": "Set on LevelUnlock_LootPool. Minimum level for items pulled from the loot pool." },
+        "Gear": { "type": "string", "description": "Set on LevelUnlock_Gear. Name of the gear GameObject prefab being unlocked or locked." },
+        "Unlock": { "type": "boolean", "description": "Set on LevelUnlock_Gear. true = unlock gear; false = the gear is locked at this level." },
+        "Upgrade1": { "type": "string", "description": "Set on LevelUnlock_IntroUpgrade. First upgrade in the tutorial pair." },
+        "Upgrade2": { "type": "string", "description": "Set on LevelUnlock_IntroUpgrade. Second upgrade in the tutorial pair." },
+        "Preview": { "type": "string", "description": "Set on LevelUnlock_Preview. Internal nameID being previewed (e.g. \"xp\")." },
+        "Seed": { "type": "integer", "description": "Set on LevelUnlock_SeededSkin. Random seed used to roll the SkinUpgrade variant." }
+      }
+    },
+
+    "CharacterEntry": {
+      "description": "A playable character. Extends Gear with character-specific metadata (branding, voice lines, default loadout).",
+      "allOf": [
+        { "$ref": "#/$defs/Gear" },
+        {
+          "type": "object",
+          "properties": {
+            "Index": { "type": "integer", "description": "Stable roster index." },
+            "IsPlayable": { "type": "boolean" },
+            "EmployeeID": { "type": "string", "description": "In-fiction employee ID shown on UI.", "examples": ["84239756"] },
+            "UIColor": { "type": "string", "description": "Primary UI color as Unity RGBA(r, g, b, a) string." },
+            "TextColor": { "type": "string", "description": "Text color for UI labels." },
+            "ParticleColor": { "type": "string", "description": "Particle color (HDR — may exceed 1.0 per channel)." },
+            "PrimaryColorTag": { "type": "string", "description": "Hex string (no #) matching UIColor — used in rich-text tags.", "examples": ["FF306F"] },
+            "TextColorTag": { "type": "string", "description": "Hex string (no #) matching TextColor." },
+            "DefaultUpgradeType": { "type": "string", "description": "C# class name of the character's default PlayerUpgrade (movement ability, e.g. AirDashUpgrade for Glider)." },
+            "DefaultSkinType": { "type": "string", "description": "C# class name of the character's default SkinUpgrade." },
+            "Quips": {
+              "type": "array",
+              "description": "Voice-line catalog (battle and contextual lines).",
+              "items": { "$ref": "#/$defs/Quip" }
+            },
+            "DefaultEmotes": {
+              "type": "array",
+              "description": "Default emote wheel entries.",
+              "items": { "$ref": "#/$defs/Quip" }
+            },
+            "SkillTree": {
+              "type": "array",
+              "description": "Per-character skill tree nodes — extracted by walking each Character's `SkillTree` MonoBehaviour and reading its `SkillTreeUpgradeUI` children. Each node has a `Layer` (tier — 0 = root, growing outward), grid coordinates `CoordX`/`CoordY` for the tree visual, an `Upgrade` it grants when purchased, and an optional `MustBeUnlockedFirst` prerequisite chain. Total nodes match the count of `Upgrade.CollectionSource == \"UpgradeTree\"` (126).",
+              "items": { "$ref": "#/$defs/SkillTreeNode" }
+            }
+          }
+        }
+      ]
+    },
+
+    "SkillTreeNode": {
+      "type": "object",
+      "description": "One node in a character's skill tree.",
+      "required": ["Upgrade", "Layer"],
+      "properties": {
+        "Upgrade": { "type": "string", "description": "Upgrade key granted by purchasing this node (matches `upgrades` map key)." },
+        "Layer": { "type": "integer", "description": "Tier in the tree (0 = root, 1, 2, …, max observed = 5)." },
+        "MinSpentSkillPointsToUnlock": { "type": "integer", "description": "Computed gate: layer 0 = 0; otherwise `2 + (layer - 1) * 5`. The player must have spent at least this many skill points elsewhere in the tree before this node unlocks." },
+        "CoordX": { "type": "integer", "description": "Visual grid X coordinate." },
+        "CoordY": { "type": "integer", "description": "Visual grid Y coordinate." },
+        "MustBeUnlockedFirst": { "type": "string", "description": "Upgrade key — prerequisite node that must be unlocked before this one. Null/empty for root-layer nodes." }
+      }
+    },
+
+    "Quip": {
+      "type": "object",
+      "description": "A voice line / emote entry.",
+      "properties": {
+        "ID": { "type": "integer", "description": "Numeric quip ID." },
+        "Index": { "type": "integer", "description": "Stable index within the character's quip list." },
+        "APIName": { "type": "string", "description": "Stable internal name (e.g. \"e_yes\", \"vl_help\")." },
+        "Label": { "type": "string", "description": "UI label." },
+        "VoicelineTextID": { "type": "string", "description": "Localization key for the spoken text." },
+        "QuipType": { "type": "string", "description": "Game-internal QuipData+Type enum stringified." },
+        "TriggerOnFire": { "type": "boolean", "description": "Whether the quip fires automatically on weapon fire." },
+        "HasVoiceline": { "type": "boolean", "description": "Whether the quip has audio (versus text-only)." },
+        "Icon": { "$ref": "#/$defs/DIcon" }
+      }
+    },
+
+    "Resource": {
+      "type": "object",
+      "description": "A PlayerResource — a unit in the game economy. Includes currencies (Gats, Saxonite), faction tickets, items (Premium Loot License), and crafting materials (Strange Components).",
+      "required": ["ID", "Name"],
+      "properties": {
+        "ID": { "type": "string", "description": "Canonical key (matches parent map's key).", "examples": ["saxonite", "scrip", "beezia"] },
+        "Name": { "type": "string", "description": "Display name (may include rich-text tags).", "examples": ["Saxonite", "Gats"] },
+        "Description": { "type": "string", "description": "Localized description with rich-text markup." },
+        "Color": { "type": "string", "description": "Theme color as Unity RGBA(r, g, b, a) string." },
+        "IconColor": { "type": "string", "description": "Tint applied to Icon." },
+        "Max": { "type": "integer", "description": "Maximum stack/inventory cap." },
+        "ItemCount": { "type": "integer", "description": "Currently-held player-state count at dump time. Note: this reflects the dumper's player save and isn't part of the catalog itself; consumers building UI off the catalog should ignore this field." },
+        "UnlockUseCount": { "type": "integer", "description": "Default number of resources spent per unlock action." },
+        "UnlockUsePerSecond": { "type": "number", "description": "Rate at which the resource drains during a hold-to-unlock action." },
+        "Rarity": {
+          "type": "string",
+          "description": "Rarity tier.",
+          "enum": ["Standard", "Rare", "Epic", "Exotic"]
+        },
+        "Visibility": { "type": "string", "description": "UI visibility policy from PlayerResource+VisibilityOptions (e.g. AlwaysShow)." },
+        "IsAmountAffectedByDifficulty": { "type": "boolean" },
+        "IsItem": { "type": "boolean", "description": "Whether the resource is an item (unique slot) vs. a stackable currency." },
+        "Icon": { "$ref": "#/$defs/DIcon" }
+      }
+    },
+
+    "Directive": {
+      "type": "object",
+      "description": "A directive — a mission modifier the player can equip for tougher missions and additional rewards. Each Directive references one or more DirectiveProperty clauses (e.g. minimum kill counts, mission flags).",
+      "required": ["ID", "CanBeChosen"],
+      "properties": {
+        "ID": { "type": "integer", "description": "Stable directive ID (also used as parent map's key, stringified)." },
+        "Name": { "type": "string", "description": "Resolved display name (block 0 of the first property's NameID, e.g. \"Cleanse\", \"Elemental Testing\")." },
+        "Description": { "type": "string", "description": "Resolved description (block 1 of the first property's NameID)." },
+        "CanBeChosen": { "type": "boolean", "description": "Whether the directive appears in the random selection pool." },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "TierWeights": { "$ref": "#/$defs/TierWeights" },
+        "Properties": {
+          "type": "array",
+          "description": "Directive clauses — predicates the player must satisfy. Each entry has a Type (e.g. DirectiveProperty_Kill) and a Raw payload with subclass-specific fields (kill counts, thresholds, mission flags, …).",
+          "items": { "$ref": "#/$defs/DirectivePropertyEntry" }
+        },
+        "AdditionalRewards": {
+          "type": "array",
+          "description": "Extra rewards granted on completion, on top of the mission's standard rewards. Same shape as gear LevelUnlocks.",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        }
+      }
+    },
+
+    "TierWeights": {
+      "type": "object",
+      "description": "Per-tier likelihood that this directive appears at each difficulty tier. Higher value = more likely to be offered.",
+      "properties": {
+        "Tier1": { "type": "number" },
+        "Tier2": { "type": "number" },
+        "Tier3": { "type": "number" },
+        "Tier4": { "type": "number" }
+      }
+    },
+
+    "DirectivePropertyEntry": {
+      "type": "object",
+      "description": "One clause within a directive (game DirectiveProperty subclass).",
+      "required": ["Type"],
+      "properties": {
+        "Type": {
+          "type": "string",
+          "description": "C# class name of the concrete DirectiveProperty_* subclass. Observed values: DirectiveProperty_Kill, DirectiveProperty_KillDeaths, DirectiveProperty_MeleeKills, DirectiveProperty_GearKills, DirectiveProperty_KillEnemyParts, DirectiveProperty_ElementKills, DirectiveProperty_ElementStacks, DirectiveProperty_Mission, DirectiveProperty_MissionKills, DirectiveProperty_OuroRooms, DirectiveProperty_SideObjective, DirectiveProperty_Speed, DirectiveProperty_SpeedThreshold."
+        },
+        "Label": {
+          "type": "string",
+          "description": "Human-readable form of `Type` (prefix stripped + CamelCase split). E.g. `DirectiveProperty_KillDeaths` → \"Kill Deaths\"."
+        },
+        "NameID": { "type": "string", "description": "Localization key from the property's `NameID` (e.g. `dp_kill`, `dp_kill_e`, `dp_kill_g`). Resolves in `localization`." },
+        "Name": { "type": "string", "description": "Resolved display name (block 0 of NameID)." },
+        "Description": { "type": "string", "description": "Resolved description (block 1 of NameID)." },
+        "LocalizationKeys": {
+          "type": "array",
+          "description": "Every `TextBlocks.GetString` key referenced in this directive property's source code. See `UpgradeDProperty.LocalizationKeys` for details.",
+          "items": { "type": "string" }
+        },
+        "Raw": {
+          "description": "Unity-serialized config for the directive property. Fields vary per subclass — for example DirectiveProperty_KillDeaths carries {kills: {min, max}, overtime, minThreatLevel, percentLostOnDeath}."
+        }
+      }
+    },
+
+    "MissionEntry": {
+      "type": "object",
+      "description": "A mission definition from Global.Instance.Missions. The base Mission class carries the headline metadata; concrete subclasses (16 observed: AmalgamationMission, CleanupDetailMission, FlatTundraMission, SatelliteSalvageMission, …) add objective-specific fields that aren't dumped here individually.",
+      "required": ["ID", "Subclass"],
+      "properties": {
+        "ID": { "type": "string", "description": "Stable mission ID (matches the parent map's key)." },
+        "Name": { "type": "string", "description": "Public Name property — usually the localized display name." },
+        "MissionName": { "type": "string", "description": "Internal _missionName field — the canonical short ID (e.g. \"sat_salvage\", \"ouroboros\")." },
+        "TypeName": { "type": "string", "description": "Public TypeName property — display label for the mission type." },
+        "MissionTypeName": { "type": "string", "description": "Internal _missionTypeName field — same data via the field path." },
+        "Description": { "type": "string", "description": "Localized description; may be empty for auto-generated missions." },
+        "Subclass": { "type": "string", "description": "C# class name of the concrete Mission subclass." },
+        "MissionType": { "type": "string", "description": "MissionType enum stringified (e.g. \"None\", \"CleanupDetail\", \"Amalgamation\")." },
+        "MissionFlags": { "type": "string", "description": "MissionFlags flag-enum stringified (comma-separated, e.g. \"NormalMission, CanJoinDuringMission, AllowAsLobbyFilter\")." },
+        "CompatibleLevels": { "type": "string", "description": "LevelFlags flag-enum stringified — which world regions can host this mission." },
+        "ShowHeader": { "type": "boolean" },
+        "DisableWithoutCommand": { "type": "boolean" },
+        "Selectable": { "type": "boolean", "description": "Whether the mission can be selected via the mission picker." },
+        "ShowInReplayMenu": { "type": "boolean" },
+        "AutoStart": { "type": "boolean" },
+        "StartFirstObjective": { "type": "boolean" },
+        "ExtractAtEnd": { "type": "boolean", "description": "Whether the mission ends with an extraction sequence." },
+        "ResetWeekly": { "type": "boolean", "description": "Whether the mission resets weekly (for recurring rewards)." },
+        "DisableDefaultRewards": { "type": "boolean", "description": "If true, the mission ignores the default reward table and only grants AdditionalRewards." },
+        "ShowButDontGiveAdditionalRewards": { "type": "boolean" },
+        "PlayStartVoicelineOnLateJoin": { "type": "boolean" },
+        "Index": { "type": "integer", "description": "Stable index within the missions list." },
+        "MinIntensity": { "type": "integer", "description": "Minimum intensity tier required to play." },
+        "MinLevelToStart": { "type": "integer", "description": "Minimum player level required." },
+        "OverrideExtractDuration": { "type": "number" },
+        "TeamReviveMultiplier": { "type": "number", "description": "Multiplier on team revives (0 disables, negative values are special-case sentinel values for some missions)." },
+        "ExpectedDurationMultiplier": { "type": "number" },
+        "MissionXPMultiplier": { "type": "number" },
+        "MissionScriptMultiplier": { "type": "number" },
+        "PlayStartVoicelineDuringDropDelay": { "type": "number" },
+        "Color": { "type": "string", "description": "Theme color as Unity RGBA(r, g, b, a) string." },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "StartVoiceline": {
+          "type": "object",
+          "description": "Mission-start voiceline reference.",
+          "properties": {
+            "ID": { "type": "string", "description": "TextBlocks key (also routes the Wwise event)." },
+            "Text": { "type": "string", "description": "Resolved intro line from TextBlocks block 0." },
+            "Priority": { "type": "integer" }
+          }
+        },
+        "ValidScenes": {
+          "type": "array",
+          "description": "Scenes this mission can run in.",
+          "items": { "$ref": "#/$defs/SceneRef" }
+        },
+        "AdditionalRewards": {
+          "type": "array",
+          "description": "One-off rewards granted on completion (LevelUnlockEntry list).",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "RepeatRewards": {
+          "type": "array",
+          "description": "Rewards granted on repeat completions (LevelUnlockEntry list).",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "RawData": {
+          "type": "object",
+          "description": "Full Mission ScriptableObject serialized via Unity JsonUtility. Captures every subclass-specific [SerializeField] field — e.g. AmalgamationMission.region/scene/globalEvent/hardModeModifierCount, CleanupDetailMission.cleanupDetailObjective/trailCount/bossObjective/bossVoiceline, SatelliteSalvageMission.powerDecommissionersObjective/alignDecommissionersObjective/satelliteObjective/decommissionerCount/powerLineCount, SaxoniteExcavationMission.corroderObjective/purgeObjective/prospectingCount, etc. Object references appear as {\"instanceID\":N,\"@ref\":\"<type>:<key>\"} pairs so consumers can resolve them against the catalog (objectives/regions/missionModifiers/globalEvents/lootPools)."
+        }
+      }
+    },
+
+    "ObjectiveEntry": {
+      "type": "object",
+      "description": "An objective prefab (NetworkBehaviour deriving from ObjectiveBase). Missions reference these through serialized fields — e.g. CleanupDetailMission.cleanupDetailObjective points here. Discovered via Resources.FindObjectsOfTypeAll<ObjectiveBase>(). 35 prefabs observed across 33 unique subclasses (EnemyWaveObjective is reused for Abomination/GenericGunk; EradicateObjective likewise).",
+      "required": ["Name", "Subclass"],
+      "properties": {
+        "Name": { "type": "string", "description": "gameObject.name of the prefab — doubles as the @ref key (\"objective:<Name>\")." },
+        "Subclass": { "type": "string", "description": "C# class name of the concrete ObjectiveBase subclass (\"AmalgamationObjective\", \"ExtractObjective\", \"PowerTargetsObjective\", …)." },
+        "Title": { "type": "string", "description": "Public Title property (TextBlocks-resolved when localized)." },
+        "AddWaypoint": { "type": "boolean", "description": "Whether the objective contributes a waypoint ping on activation." },
+        "SetupUIOnActivate": { "type": "boolean", "description": "Whether MoveNext() runs on Activate() to populate the HUD immediately." },
+        "ShowCompleteMessage": { "type": "boolean" },
+        "IsSideObjective": { "type": "boolean", "description": "True if the prefab implements ISideObjective." },
+        "StartVoiceline": {
+          "type": "object",
+          "description": "Voiceline played when the objective activates.",
+          "properties": {
+            "ID": { "type": "string", "description": "TextBlocks key (also routes the Wwise event)." },
+            "Text": { "type": "string", "description": "Resolved line from TextBlocks block 0." },
+            "Priority": { "type": "integer" }
+          }
+        },
+        "CompleteVoiceline": {
+          "type": "object",
+          "description": "Voiceline played when the objective completes successfully.",
+          "properties": {
+            "ID": { "type": "string", "description": "TextBlocks key." },
+            "Text": { "type": "string", "description": "Resolved line." },
+            "Priority": { "type": "integer" }
+          }
+        },
+        "ObjectiveInfoList": {
+          "type": "array",
+          "description": "Per-step HUD strings shown sequentially as the objective progresses through its phases. Each step has a localization key + resolved title/description, and a flag controlling whether numerical progress is rendered.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "TitleID": { "type": "string", "description": "TextBlocks key for the step title (e.g. \"o_breach\")." },
+              "Title": { "type": "string", "description": "Resolved title (e.g. \"Breach The Door\")." },
+              "DescriptionID": { "type": "string", "description": "TextBlocks key for the step description." },
+              "Description": { "type": "string", "description": "Resolved description." },
+              "ShowNumberProgress": { "type": "boolean" }
+            }
+          }
+        },
+        "RawData": {
+          "type": "object",
+          "description": "Full prefab serialized via JsonUtility — captures every [SerializeField] on the concrete subclass (decommissioner/relay/sub-objective references, scene refs, target counts, sub-event prefabs). Object references include the {\"instanceID\":N,\"@ref\":\"<type>:<key>\"} sibling for resolution."
+        }
+      }
+    },
+
+    "Region": {
+      "type": "object",
+      "description": "A world region — a thematic grouping of scenes (e.g. \"Tundra\", \"Desert\", \"Gravity Farms\"). 5 entries.",
+      "required": ["ID", "NameID"],
+      "properties": {
+        "ID": { "type": "integer", "description": "Stable region ID (also used stringified as the parent map's key)." },
+        "NameID": { "type": "string", "description": "Internal short ID (e.g. \"tundra\", \"desert\", \"gravityfarm\", \"city\", \"icefloes\")." },
+        "RegionName": { "type": "string", "description": "Localized display name." },
+        "ColoredRegionName": { "type": "string", "description": "Localized display name with rich-text color tags." },
+        "LocalizedDescription": { "type": "string" },
+        "Flags": { "type": "string", "description": "LevelFlags flag-enum stringified (e.g. \"SpawnCombatResource, SpawnParkourResource, GravityFarm\")." },
+        "Color": { "type": "string", "description": "Theme color as Unity RGBA(r, g, b, a) string." },
+        "LockRegion": { "type": "boolean" },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "Scenes": {
+          "type": "array",
+          "description": "Scenes belonging to this region.",
+          "items": { "$ref": "#/$defs/SceneRef" }
+        }
+      }
+    },
+
+    "SceneRef": {
+      "type": "object",
+      "description": "Reference to a Unity scene with its localization key.",
+      "properties": {
+        "Scene": { "type": "string", "description": "Unity scene asset name." },
+        "LocationName": { "type": "string", "description": "Localization key for the location's display name." }
+      }
+    },
+
+    "Enemy": {
+      "type": "object",
+      "description": "An EnemyClass entry — a recipe for spawning a particular enemy archetype, with its body parts, behavior config, and tag flags.",
+      "required": ["ID", "InternalName"],
+      "properties": {
+        "ID": { "type": "string", "description": "EnemyClass.ID (stringified)." },
+        "Name": { "type": "string", "description": "Public Name property (display)." },
+        "APIName": { "type": "string", "description": "Stable API name." },
+        "InternalName": { "type": "string", "description": "Internal `_name` field — short identifier used in code (e.g. \"b_lasercopter\", \"Slicer\")." },
+        "Tags": { "type": "string", "description": "EnemyTags flag-enum stringified, comma-separated. Known values: Gunner, Flyer, Exploder, Sniper, Shielder, Support, Turret, Tall, Crawler, Difficult, Immunity, Oxythane." },
+        "LevelFlags": { "type": "string", "description": "LevelFlags flag-enum stringified — which world regions this enemy can spawn in." },
+        "OverrideUpgradeDropChance": { "type": "number", "description": "Replaces the default upgrade drop chance for this enemy (-1 = use default)." },
+        "OverclockChance": { "type": "number", "description": "Probability the enemy spawns overclocked (0..1)." },
+        "ShellHealthMultiplier": { "type": "number", "description": "Multiplier applied to outer-shell health relative to core health." },
+        "CanBeDespawned": { "type": "boolean" },
+        "MinLegs": { "type": "integer", "description": "Minimum number of legs spawned with this enemy." },
+        "MaxLegs": { "type": "integer", "description": "Maximum number of legs." },
+        "ArmChance": { "type": "number", "description": "Probability of spawning arms (0..1)." },
+        "LegChance": { "type": "number", "description": "Probability of spawning legs at all (0..1)." },
+        "Config": { "$ref": "#/$defs/EnemyConfig" },
+        "CustomLoot": {
+          "type": "array",
+          "description": "Extra rewards fired when this enemy is killed (LevelUnlockList from EnemyClass.CustomLoot). Same shape as gear LevelUnlocks. Most enemies have nothing here; bosses (e.g. Amalgamation) and special enemies (Pillabom, Missilehead) have entries.",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        }
+      }
+    },
+
+    "EnemyConfig": {
+      "type": "object",
+      "description": "Per-enemy behavior tuning — the bulk of the calculator-relevant fields. Mirrors EnemyBrain+Config.",
+      "properties": {
+        "EnemyType": { "type": "string", "description": "EnemyType enum stringified (e.g. \"Grunt\", \"Brute\", \"Abomination\")." },
+        "OverrideEnemySlots": { "type": "integer", "description": "Number of \"enemy slots\" this enemy occupies in spawn budgets (overrides type default if set)." },
+        "AgentSize": { "type": "integer", "description": "NavMesh agent type — controls which surfaces the enemy can traverse." },
+        "NavRadius": { "type": "number", "description": "Pathfinding radius in units." },
+        "DontRandRotateCore": { "type": "boolean", "description": "If true, the core mesh is not randomly rotated on spawn." },
+        "MaxFlankTime": { "type": "number" },
+        "MinFlankDistance": { "type": "number" },
+        "TryFlankTime": { "type": "number" },
+        "FlankChance": { "type": "number", "description": "Probability the enemy attempts to flank (0..1)." },
+        "MoveSpeed": { "type": "number", "description": "Base movement speed in units/second." },
+        "RigidbodySpeedMultiplier": { "type": "number" },
+        "TurnSpeed": { "type": "number", "description": "Turn rate in degrees/second." },
+        "OverrideAcceleration": { "type": "number" },
+        "OverrideStoppingDistance": { "type": "number" },
+        "AllowRigidbodyMovement": { "type": "boolean" },
+        "BalanceDurationBeforeDisablingRigidbodyMovement": { "type": "number" },
+        "MinLegsToBalance": { "type": "integer", "description": "Minimum legs required for the enemy to remain balanced before ragdolling." },
+        "RagdollForceThreshold": { "type": "number", "description": "Force in Newtons (-ish) required to topple the enemy." },
+        "HitStunChance": { "type": "number", "description": "Probability of entering hit-stun on damage (0..1)." },
+        "AddedHeight": { "type": "number" },
+        "DisableNavigation": { "type": "boolean" },
+        "NavPriority": { "type": "integer" },
+        "DontDespawnWhenUnableToPath": { "type": "boolean" },
+        "DontLowerTowardTargetWhenFlying": { "type": "boolean" },
+        "OverrideThrusterHoverHeight": { "type": "number" },
+        "CanAttackMultipleTargets": { "type": "boolean" },
+        "MaxConcurrentMeleeAttacks": { "type": "integer" },
+        "MeleeInterval": { "type": "number", "description": "Cooldown between melee swings in seconds." },
+        "SwitchTargetInterval": { "type": "number", "description": "Cooldown between target re-evaluations in seconds." },
+        "SwitchTargetChance": { "type": "number", "description": "Probability of switching target each evaluation tick (0..1)." },
+        "LookForPartDistance": { "type": "number", "description": "Range at which the enemy seeks regrowable body parts." },
+        "LookForPartInterval": { "type": "number" },
+        "RegrowLimbCooldown": { "type": "number", "description": "Cooldown before a destroyed limb can regrow." },
+        "RegrowLimbDuration": { "type": "number", "description": "Time to fully regrow a limb." },
+        "OnlyUseCoreHealthForHealthbar": { "type": "boolean" }
+      }
+    },
+
+    "StatusEffect": {
+      "type": "object",
+      "description": "A status-effect element (e.g. Fire, Acid, Decay, Electric). Combat math like DPS and tick rate is implemented in code rather than declared here; this object holds the identity, theming, and stage count.",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "string", "description": "Internal effectID (e.g. \"el_acid\", \"el_decay\", \"el_fire\")." },
+        "Name": { "type": "string", "description": "Display name (\"Acid\", \"Decay\")." },
+        "ColoredName": { "type": "string", "description": "Display name wrapped in a rich-text color tag." },
+        "VerbName": { "type": "string", "description": "Active verb (e.g. \"Corrode\", \"Burn\", \"Decay\")." },
+        "PastVerbName": { "type": "string", "description": "Past-tense verb (e.g. \"Corroded\")." },
+        "IconTextTag": { "type": "string", "description": "Inline rich-text sprite tag for embedding the effect icon in tooltips." },
+        "StopsHealthRegeneration": { "type": "boolean", "description": "Whether targets affected by this status cannot regenerate health." },
+        "MinStageValue": { "type": "number", "description": "Stage threshold (0..1) at which the effect counts as \"applied\"." },
+        "ElementSwitchID": { "type": "integer", "description": "Wwise switch ID used to route audio for this element." },
+        "NumStages": { "type": "integer", "description": "Number of intensity stages defined (`stages` array length)." },
+        "TrailColor": { "type": "string" },
+        "LaserColor": { "type": "string" },
+        "TextColor": { "type": "string" },
+        "IconColor": { "type": "string" },
+        "MuzzleFlashColor": { "type": "string" },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "Tuning": {
+          "type": "object",
+          "description": "Decompilation-derived per-effect combat tuning. Values are `const`/inlined in C# subclasses, not runtime-readable as instance fields. Default behavior is `DamageMultiplier=1`, `FullSaturationLifetime=3s`, `DecayDelay=3s`, `DecaySpeed=0.3/s` — overrides are noted per element.",
+          "properties": {
+            "DamageMultiplier": { "type": "number", "description": "Applied to non-self damage when the effect is fully saturated. 1.0 default; 1.2 for Decay, 1.35 for Rot (metal targets only). Other effects are 1.0." },
+            "FullSaturationLifetime": { "type": "number", "description": "Seconds the saturation persists after reaching full. 3 (default), 4 (Decay), 4.5 (Water), 5 (Bee), 60 (Rot), 1.6 player / 0.6 enemy (Immunity), 30 EnemyCore / 5 other (YellowResource)." },
+            "DecayDelay": { "type": "number", "description": "Seconds after last application before saturation begins decaying. 3 default; 0.5 for Immunity." },
+            "DecaySpeed": { "type": "number", "description": "Saturation decay rate. 0.3 / s default; 20 / s for Immunity (effectively instant)." }
+          }
+        }
+      }
+    },
+
+    "Stack": {
+      "type": "object",
+      "description": "A stacking modifier (PlayerStackData) — describes how a buff/debuff or counter stacks on the player.",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "description": "Internal stack identifier (e.g. \"scrap\", \"wildfire\", \"dmr_boost\")." },
+        "Color": { "type": "string", "description": "Theme color." },
+        "MaxStacks": { "type": "integer", "description": "Maximum number of stacks." },
+        "LoseStackInterval": { "type": "number", "description": "Seconds between losing one stack (0 = no periodic decay)." },
+        "TimeOutDuration": { "type": "number", "description": "Seconds after which all stacks expire (0 = no timeout)." },
+        "TimeoutOnLevelLoad": { "type": "boolean" },
+        "DisplayOnHUD": { "type": "boolean" },
+        "Icon": { "$ref": "#/$defs/DIcon" }
+      }
+    },
+
+    "Threat": {
+      "type": "object",
+      "description": "A threat tier (ThreatData) — controls mission difficulty and per-tier reward pools. \"threat1\" is easiest, \"threat7\" hardest.",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "string", "description": "Internal threat name (\"threat1\".. \"threat7\")." },
+        "Name": { "type": "string", "description": "Display name (\"Safe\", \"Brutal\", …)." },
+        "NumberLabel": { "type": "string", "description": "Numbered label (e.g. \"Threat Level 1\")." },
+        "Color": { "type": "string" },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "MissionRewards": {
+          "type": "array",
+          "description": "Rewards granted on mission completion at this threat tier. Same shape as gear LevelUnlocks.",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        }
+      }
+    },
+
+    "PlayerBase": {
+      "type": "object",
+      "description": "Player prefab base configuration. `RawData` is the full JsonUtility serialization of the Player MonoBehaviour — every [SerializeField] including the 100+ movement/health/wallrun/slide tunables. Catalog cross-references inside RawData get `@ref` enrichment (e.g. PlayerStackData refs become `\"@ref\": \"stack:scrap\"`).",
+      "properties": {
+        "Name": { "type": "string" },
+        "RawData": { "type": "object", "description": "Full Unity-serialized prefab data. Key fields: `moveSpeed`, `walkSpeed`, `crouchSpeed`, `jumpSpeed`, `airJumps`, `slideSpeed`, `wallrunSpeedAcceleration`, `wallrunDuration`, `wallrunYSpeedIntensity`, `gravityMultiplier`, `fallVelocityDrag`, `maxHealth`, `healthRegenTarget`, plus all the acceleration/deceleration/coyote-time parameters." }
+      }
+    },
+    "AuthItem": {
+      "type": "object",
+      "description": "An AuthItem (redemption-code inventory item).",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "string", "examples": ["auth_bruiser"] },
+        "Name": { "type": "string", "examples": ["2FA Code: Bruiser"] },
+        "Color": { "type": "string" },
+        "Rarity": { "type": "string", "enum": ["Standard", "Rare", "Epic", "Exotic"] },
+        "Character": { "type": "string", "description": "Character APIName (matches `characters` map key)." },
+        "Upgrade": { "type": "string", "description": "Upgrade key (matches `upgrades` map key)." }
+      }
+    },
+    "PatternPath": {
+      "type": "object",
+      "description": "A special hex-grid pattern. When the player's upgrade grid layout matches the pattern, the rewards fire.",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "integer" },
+        "Name": { "type": "string", "description": "ScriptableObject asset name." },
+        "Rarities": { "type": "string", "description": "RarityFlags enum stringified — which upgrade rarities count toward this pattern (\"None\" means any)." },
+        "Pattern": { "$ref": "#/$defs/HexMap" },
+        "Rewards": { "type": "array", "items": { "$ref": "#/$defs/LevelUnlockEntry" } }
+      }
+    },
+    "ThreatProfile": {
+      "type": "object",
+      "description": "A `ThreatModifier<float>` — array indexed by threat tier (index 0 = threat1, index 6 = threat7).",
+      "required": ["Name", "Threats"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Threats": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": { "type": "number" }
+        }
+      }
+    },
+    "CustomWave": {
+      "type": "object",
+      "description": "A wave-composition spec used by the enemy spawn system.",
+      "required": ["Name", "Subclass"],
+      "properties": {
+        "Name": { "type": "string" },
+        "Subclass": { "type": "string", "description": "Concrete CustomWave subclass (e.g. GenericCustomWave)." },
+        "Tags": { "type": "string", "description": "EnemyTags flag-enum stringified — included tags." },
+        "ExcludeTags": { "type": "string" },
+        "Types": { "type": "string", "description": "EnemyTypeFlags flag-enum stringified." },
+        "EnemyCountMultiplier": { "type": "number" },
+        "OverclockChanceMultiplier": { "type": "number" },
+        "MinRoomSize": { "type": "string", "description": "ComponentSize enum (\"Small\", \"Medium\", \"Large\")." },
+        "MinOuroRooms": { "type": "integer", "description": "Minimum Ouroboros rooms required for this wave to spawn (-1 = no constraint)." },
+        "TagChances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Tag": { "type": "string" },
+              "Multiplier": { "type": "number" }
+            }
+          }
+        },
+        "TypeChances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Type": { "type": "string" },
+              "Multiplier": { "type": "number" }
+            }
+          }
+        },
+        "AddAttachments": { "type": "boolean" },
+        "OverrideIndividualEnemies": { "type": "integer" }
+      }
+    },
+    "Collectable": {
+      "type": "object",
+      "description": "A world-collectable definition. The player gathers `Count` instances to fully claim the rewards.",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "string" },
+        "Name": { "type": "string" },
+        "Color": { "type": "string" },
+        "Count": { "type": "integer" },
+        "PunchTextID": { "type": "string", "description": "Localization key for the on-punch flavor line." },
+        "PunchText": { "type": "string", "description": "Resolved flavor text from `PunchTextID` block 0." },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "Rewards": { "type": "array", "items": { "$ref": "#/$defs/LevelUnlockEntry" } }
+      }
+    },
+    "EnemyGroup": {
+      "type": "object",
+      "description": "A weighted bag of `EnemyClass` IDs grouped by an `EnemyType`. Used to vary enemy mix within a single type.",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string" },
+        "EnemyType": { "type": "string" },
+        "Enemies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Enemy", "Weight"],
+            "properties": {
+              "Enemy": { "type": "string", "description": "Enemy ID (matches `enemies` map key)." },
+              "Weight": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+
+    "PlayerUpgradeEntry": {
+      "type": "object",
+      "description": "A non-grid player upgrade.",
+      "required": ["Name", "Subclass"],
+      "properties": {
+        "Name": { "type": "string", "description": "ScriptableObject asset name." },
+        "Subclass": { "type": "string", "description": "Concrete C# class name (e.g. AirDashUpgrade, NoseDiveUpgrade, JetpackUpgrade, BlinkUpgrade, AimWhileSlidingUpgrade, SetFlagsPlayerUpgrade)." },
+        "Character": { "type": "string", "description": "Character APIName whose `DefaultUpgrade` references this entry, if any. Null for skill-tree upgrades not bound to a specific character via DefaultUpgrade." },
+        "RawData": {
+          "type": "object",
+          "description": "Full Unity-serialized prefab data. Movement abilities (AirDash/NoseDive/Jetpack) include nested `Data` structs with all timing/force/duration tunables (e.g. `prefabData.leapForce`, `prefabData.maxFlyTime`, `prefabData.flyAngleBounds`, `prefabData.landDamageRadius`, etc.) plus `Cooldown` (rechargeDuration, maxCharges). Catalog cross-references inside RawData get `@ref` enrichment.",
+          "additionalProperties": true
+        }
+      }
+    },
+
+    "StatusEffectGlobals": {
+      "type": "object",
+      "description": "Shared compile-time constants for the status-effect system. Source: `StatusEffect.cs` base class.",
+      "properties": {
+        "SaturationAddMultiplier": { "type": "number", "description": "Converts `damageEffectAmount` to saturation gain per hit (effectively /10)." },
+        "FullSaturationDamage": { "type": "number", "description": "Damage dealt when an effect first reaches full saturation, against enemy targets." },
+        "PlayerDamageOnTick": { "type": "number", "description": "Damage-per-tick when a status effect is fully saturated against a player target." },
+        "ExplosionDamage": { "type": "number", "description": "AoE explosion damage multiplier on enemies (from on-saturation explosions)." },
+        "ExplosionPlayerDamage": { "type": "number", "description": "AoE explosion damage multiplier on players." },
+        "ExplosiveDamageMultiplier": { "type": "number", "description": "Flat multiplier on damage with `DamageFlags.Explosive` set (`ITarget.ExplosiveDamageMultiplier`)." }
+      }
+    },
+
+    "Formulas": {
+      "type": "object",
+      "description": "Hardcoded progression formulas extracted from source.",
+      "properties": {
+        "XPCurves": {
+          "type": "array",
+          "description": "Each curve produces `coefficient * (currentLevel - LevelOffset + 1)^power + add`. Pick the curve whose `Context` matches the level bracket: `character_1_to_10` for character levels 1..10, `character_11_plus` for 11+, `gear_1_to_5` for gear levels 1..5, `gear_6_plus` for 6+.",
+          "items": {
+            "type": "object",
+            "required": ["Context", "Coefficient", "Power", "Add"],
+            "properties": {
+              "Context": { "type": "string" },
+              "Description": { "type": "string" },
+              "LevelOffset": { "type": "integer" },
+              "Coefficient": { "type": "number" },
+              "Power": { "type": "number" },
+              "Add": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+
+    "GlobalEvent": {
+      "type": "object",
+      "description": "A timed/seasonal global event — Amalgamation Hunt, Corp Contest, etc. Player-collective progress against `TotalRequiredProgress` triggers `Rewards` and optionally unlocks `EndMission`. Subclasses (AmalgamationGlobalEvent, CorpContestGlobalEvent) add subclass-specific tunables in `RawData`.",
+      "required": ["ID", "Subclass"],
+      "properties": {
+        "ID": { "type": "string", "examples": ["ge_amalgamation", "ge_contest"] },
+        "Subclass": { "type": "string", "description": "Concrete C# class name." },
+        "EventID": { "type": "string" },
+        "StatID": { "type": "string" },
+        "Title": { "type": "string" },
+        "Color": { "type": "string" },
+        "Deactivate": { "type": "boolean" },
+        "AreStatsRelative": { "type": "boolean" },
+        "Completed": { "type": "boolean" },
+        "CompleteOnFullProgress": { "type": "boolean" },
+        "MustParticipateToClaimRewards": { "type": "boolean" },
+        "PreviewEndMission": { "type": "boolean" },
+        "EndDate": { "type": "integer", "description": "Unix timestamp (0 = no deadline). Real seasonal events have a non-zero value here." },
+        "TotalRequiredProgress": { "type": "integer" },
+        "ProgressOnMissionCompleted": { "type": "integer" },
+        "ProgressOnMissionCompletedVisualMultiplier": { "type": "number" },
+        "ProgressDisplayMultiplier": { "type": "number" },
+        "EndMission": { "type": "string", "description": "Mission ID cross-ref (matches `missions` map key)." },
+        "EndMissionContainer": { "type": "string", "description": "MissionContainer asset name." },
+        "OnStartRoachardLine": { "type": "string", "description": "Voiceline ID played when the event begins." },
+        "OnStartTextLog": { "type": "string" },
+        "OnEndTextLog": { "type": "string" },
+        "ProgressStats": {
+          "type": "array",
+          "description": "Per-stat progress contributions tracked toward TotalRequiredProgress.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "TitleID": { "type": "string", "description": "Localization key for the stat's display name." },
+              "StatID": { "type": "string", "description": "Steam stat / internal stat ID. May be empty (falls back to GlobalEvent.StatID)." },
+              "Color": { "type": "string" },
+              "DisplayType": { "type": "string", "description": "ProgressDisplayType enum stringified." }
+            }
+          }
+        },
+        "Rewards": {
+          "type": "array",
+          "description": "Rewards on completion (LevelUnlockEntry list).",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "RawData": {
+          "type": "object",
+          "description": "Full Unity-serialized event data. Subclass-specific fields (e.g. AmalgamationGlobalEvent's `missionModifier`, `modifierChance`, `maxInstanceDamage`, `maxDamageThreatMultiplier`, `HornetSwarmer`, `HornetCount`) live here. Catalog cross-references get `@ref` enrichment."
+        }
+      }
+    },
+
+    "Localization": {
+      "type": "object",
+      "description": "One entry from `TextBlocks.strings`. The first block is the canonical text the game shows when calling `TextBlocks.GetString(key)`. For upgrade keys, block [0] is the Name and block [1] is the Description.",
+      "required": ["Blocks"],
+      "properties": {
+        "ID": { "type": "integer", "description": "Stable numeric ID assigned to this group during CSV import." },
+        "Blocks": {
+          "type": "array",
+          "description": "One or more text variants. `TextBlocks.GetString(key)` returns `Blocks[0].Text` by default.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Text": { "type": "string", "description": "The displayed text (may include rich-text tags)." },
+              "UniqueID": { "type": "string", "description": "Optional stamp from the source CSV." }
+            }
+          }
+        }
+      }
+    },
+
+    "LootPool": {
+      "type": "object",
+      "description": "A weighted pool of upgrade keys. Drawing one upgrade at random uses `Weight` as the probability mass (sum-normalized).",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "description": "Pool name (matches the parent map's key)." },
+        "Upgrades": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Upgrade", "Weight"],
+            "properties": {
+              "Upgrade": { "type": "string", "description": "Upgrade key (matches a key in the top-level `upgrades` map)." },
+              "Weight": { "type": "integer", "description": "Relative weight; not normalized. Higher value = more likely." }
+            }
+          }
+        }
+      }
+    },
+
+    "MissionModifier": {
+      "type": "object",
+      "description": "A mission modifier (e.g. \"Horde\", \"Fog\", \"Mortar Spawns\"). Each MissionContainer's weekly rotation pulls a small set of these to alter mission behavior.",
+      "required": ["ID", "ModifierName"],
+      "properties": {
+        "ID": { "type": "integer", "description": "Stable modifier ID (also used stringified as the parent map's key)." },
+        "ModifierName": { "type": "string", "description": "Internal name (e.g. \"m_horde\", \"m_fog\", \"m_mortar\")." },
+        "APIName": { "type": "string" },
+        "Name": { "type": "string", "description": "Localized display name." },
+        "Description": { "type": "string", "description": "Localized description." },
+        "TitleAndDescription": { "type": "string", "description": "Combined rich-text title + description as shown in the modifier popup." },
+        "Subclass": { "type": "string", "description": "C# class name. Most are \"MissionModifierGeneric\"; some are wave-specific (\"MissionModifierWaveModifier\") or named subclasses (\"MissionModifierHorde\")." },
+        "Flags": { "type": "string", "description": "ModifierFlags flag-enum stringified (e.g. \"AllowInNormalMissions\")." },
+        "Danger": { "type": "string", "description": "Danger enum stringified (\"None\", \"Low\", \"Medium\", \"High\", \"Extreme\")." },
+        "CanStack": { "type": "boolean", "description": "Whether multiple instances of this modifier can apply at once." },
+        "XPMultiplier": { "type": "number", "description": "XP bonus when this modifier is active (e.g. 1.3 = +30%)." },
+        "Color": { "type": "string" },
+        "TextColor": { "type": "string" },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "IncompatibleMissions": {
+          "type": "array",
+          "description": "Mission IDs this modifier is incompatible with (matching keys in the missions map).",
+          "items": { "type": "string" }
+        },
+        "IncompatibleModifiers": {
+          "type": "array",
+          "description": "Modifier IDs this modifier is incompatible with.",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+
+    "RarityEntry": {
+      "type": "object",
+      "description": "Per-rarity pricing/visual. Sourced from the RarityData struct array on Global.Instance.Rarities (not a ScriptableObject — fields are reflectively read).",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "description": "Canonical rarity key (\"standard\", \"rare\", \"epic\", \"exotic\", \"contraband\", \"oddity\")." },
+        "LocalizedName": { "type": "string", "description": "Localization key for the display name." },
+        "ColorTag": { "type": "string", "description": "Rich-text color tag prefix used when this rarity's name is rendered inline." },
+        "BoostedName": { "type": "string", "description": "Localization key for the \"Boosted\" variant label." },
+        "TurbochargedName": { "type": "string", "description": "Localization key for the \"Turbocharged\" variant label." },
+        "UpgradeScripCost": { "type": "integer", "description": "Base scrip cost to unlock an upgrade at this rarity." },
+        "UpgradeRareResourceCost": { "type": "integer", "description": "Base rare-resource cost." },
+        "CleanseCost": { "type": "integer", "description": "Ouroboros cleanse cost (paid in `ourosample`)." },
+        "CraftNewSaxoniteCost": { "type": "integer", "description": "Saxonite price for \"craft new\" rolls at this rarity." },
+        "AdditionalUpgradeCost": {
+          "type": "array",
+          "description": "Extra resources required beyond scrip+rare. Empty for most rarities.",
+          "items": { "$ref": "#/$defs/DUnlockCost" }
+        },
+        "ScrapResource": { "type": "string", "description": "PlayerResource ID (resolves in `resources`) — the scrap currency dismantling produces for this rarity." },
+        "Color": { "type": "string", "description": "RGBA(r,g,b,a)." },
+        "BackgroundColor": { "type": "string" },
+        "LightColor": { "type": "string" },
+        "Icon": { "$ref": "#/$defs/DIcon" }
+      }
+    },
+
+    "MissionContainerEntry": {
+      "type": "object",
+      "description": "Mission-container variant. The base class supplies AdditionalMissionFlags / RemovedMissionFlags; subclass-specific fields (e.g. WeeklyOvertimeAssignment.weekData[]) live in RawData.",
+      "required": ["Name", "Subclass"],
+      "properties": {
+        "Name": { "type": "string", "description": "Asset name (also the parent map key)." },
+        "Subclass": { "type": "string", "description": "C# class name." },
+        "Index": { "type": "integer", "description": "Position in Global.Instance.MissionContainers." },
+        "AdditionalMissionFlags": { "type": "string", "description": "MissionFlags ORed onto every mission this container wraps." },
+        "RemovedMissionFlags": { "type": "string", "description": "MissionFlags ANDed off." },
+        "RawData": { "type": "object", "description": "Full SO via JsonUtility. WeeklyOvertimeAssignment includes `weekData[]` (start times, seeds, modifier instance IDs that resolve via @ref) plus `rewards` / `repeatableRewards` / `resetInterval` / `minThreat` / `minIntensity`." }
+      }
+    },
+
+    "EncounterEntry": {
+      "type": "object",
+      "description": "An entry from Global.Instance.encounters — a procedural-mission spawn rule (terrain feature, prop set, mini-objective). 20 entries.",
+      "required": ["Name", "Subclass"],
+      "properties": {
+        "Name": { "type": "string", "description": "Asset name; also the @ref key (`encounter:<Name>`)." },
+        "Subclass": { "type": "string", "description": "Concrete C# class name (CraterEncounter, PipelineEncounter, …)." },
+        "Index": { "type": "integer", "description": "Position in Global.Instance.encounters[]." },
+        "IsPrefab": { "type": "boolean", "description": "True for GameObject prefabs (component implements IEncounter); false for SO impls." },
+        "RawData": { "type": ["object", "null"], "description": "Full encounter via JsonUtility. Per-subclass [SerializeField] fields — region masks, spawn weights, prefab refs, sub-objective targets. `null` for GameObject-prefab entries (5 of 20: Clear Objects Objective, LaptopRetrievalObjective, LostSaxitosEncounter, RelayTowers, UploadData SideObjective) since JsonUtility can't serialize a GameObject root — the encounter's `Name` doubles as the matching key in the `objectives` map for these." }
+      }
+    },
+
+    "QuipEntry": {
+      "type": "object",
+      "description": "Master quip/emote catalog entry. 63 entries spread across 4 characters.",
+      "required": ["ID", "Label"],
+      "properties": {
+        "ID": { "type": "integer", "description": "Numeric quip ID (stable; the parent map key is this stringified)." },
+        "Index": { "type": "integer", "description": "Position in Global.Instance.Quips." },
+        "Label": { "type": "string", "description": "_label — also doubles as the localization key." },
+        "Character": { "type": "string", "description": "CharacterType enum (Wrangler / Bruiser / Scrapper / Glider / All)." },
+        "QuipType": { "type": "string", "description": "QuipType flag-enum (None, Dance, DisableInVehicle)." },
+        "VoicelineTextID": { "type": "string", "description": "Localization key for the voiceline played when the quip fires (resolves in `localization`)." },
+        "VoicelineText": { "type": "string", "description": "Resolved text from `VoicelineTextID` block 0 — the actual line spoken." },
+        "TriggerOnFire": { "type": "boolean" },
+        "CancelOnFire": { "type": "boolean" },
+        "PlayThirdPersonAnimationForOwner": { "type": "boolean" },
+        "HideThirdPersonWeapon": { "type": "boolean" },
+        "IsThirdPersonAdditive": { "type": "boolean" },
+        "MinAnimationInterval": { "type": "number" },
+        "AnimationFirstPersonClip": { "type": "string", "description": "Asset name of the first-person animation clip." },
+        "AnimationThirdPersonClip": { "type": "string", "description": "Asset name of the third-person animation clip." },
+        "Icon": { "$ref": "#/$defs/DIcon" }
+      }
+    },
+
+    "Crafting": {
+      "type": "object",
+      "description": "Master crafting price table. Singleton — sourced from the `CraftingWindow` MonoBehaviour prefab's private cost arrays.",
+      "properties": {
+        "MinLevelToAccessCrafting": { "type": "integer", "description": "Player level required to access the crafting bench (10 in source)." },
+        "RandomCraftCost": { "type": "array", "description": "Roll a fully-random new upgrade.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "WeaponCraftCost": { "type": "array", "description": "Roll a random upgrade for a specific gear.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "UpgradeCraftCost": { "type": "array", "description": "Duplicate an existing upgrade.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "UpcraftToRareCost": { "type": "array", "description": "Tier-up: Standard → Rare.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "UpcraftToEpicCost": { "type": "array", "description": "Rare → Epic.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "UpcraftToExoticCost": { "type": "array", "description": "Epic → Exotic.", "items": { "$ref": "#/$defs/DUnlockCost" } }
+      }
+    },
+
+    "DialogueData": {
+      "type": "object",
+      "properties": {
+        "Exchanges": {
+          "type": "object",
+          "description": "DialogueExchange catalog keyed by `id`.",
+          "additionalProperties": { "$ref": "#/$defs/DialogueEntry" }
+        },
+        "TriggerChances": {
+          "type": "array",
+          "description": "Per-trigger probability indexed by `Mathf.Log2((int)Trigger)`. 12 entries: [None, Ambient, PlayerJoin, PlayerLeave, DropPodLaunch, DropPodFalling, DropPodLand, DropPodDoorOpen, DropPodReturnToHub, OpenInventory, Killed/KilledByPlayer, Revive].",
+          "items": { "type": "number" }
+        }
+      }
+    },
+
+    "DialogueEntry": {
+      "type": "object",
+      "description": "A scripted multi-line exchange between Mission Control and the crew.",
+      "required": ["ID"],
+      "properties": {
+        "ID": { "type": "string", "description": "Localization key root — lines resolve via TextBlocks per-character variants." },
+        "Trigger": { "type": "string", "description": "Trigger enum stringified (Ambient / PlayerJoin / DropPodLaunch / Killed / Revive / …)." },
+        "MissionTypes": { "type": "string", "description": "MissionType flag-enum gating which mission types this exchange can play in." },
+        "LevelTypes": { "type": "string", "description": "LevelFlags: Hub / NormalLevels / SpecialLevels." },
+        "ValidRegions": { "type": "string", "description": "LevelFlags region mask." },
+        "MainCharacter": { "type": "string", "description": "Dude asset name driving the exchange." },
+        "SecondaryCharacter": { "type": "string" },
+        "Lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Character": { "type": "string", "description": "Dude asset name speaking this line." },
+              "Delay": { "type": "number", "description": "Seconds to wait before playing." },
+              "StartWithNext": { "type": "boolean", "description": "If true, plays simultaneously with the previous line." },
+              "Text": { "type": "string", "description": "Resolved line text (block at line index N under the exchange's TextBlocks key)." }
+            }
+          }
+        }
+      }
+    }
+  }
+}

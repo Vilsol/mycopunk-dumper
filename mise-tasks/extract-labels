@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Static-analyze decompiled UpgradeProperty/DirectiveProperty source files for the localization keys and literal strings each class emits. Writes ./property-labels.json — a complement to the runtime dump's `localization` table that captures keys hidden behind conditionals/switches that runtime sampling can miss."
+set -euo pipefail
+
+DECOMPILED="${1:-./decompiled}"
+OUT="${2:-./property-labels.json}"
+
+if [[ ! -d "$DECOMPILED" ]]; then
+    echo "ERROR: decompiled dir not found at $DECOMPILED" >&2
+    echo "  Run: ilspycmd -p -o $DECOMPILED <Assembly-CSharp.dll>" >&2
+    exit 1
+fi
+
+python3 - "$DECOMPILED" "$OUT" <<'PY'
+import re, os, glob, json, sys
+
+decompiled, out = sys.argv[1], sys.argv[2]
+key_pat     = re.compile(r'TextBlocks\.GetString(?:Variant)?\(\s*"([^"]+)"')
+switch_pat  = re.compile(r'=>\s*"([^"]+)"')          # rarity switch-expr keys
+addprop_pat = re.compile(r'AddDynamicProperty\([^,]+,\s*(?:TextBlocks\.GetString\()?\s*"([^"]+)"')
+literal_pat = re.compile(r'StatData\.Create\(\s*"([^"]+)"')
+
+per_class = {}
+patterns = ['UpgradeProperty_*.cs', 'DirectiveProperty_*.cs', 'SkinUpgradeProperty_*.cs']
+for pat in patterns:
+    for path in sorted(glob.glob(os.path.join(decompiled, pat))):
+        cls = os.path.splitext(os.path.basename(path))[0]
+        with open(path) as f: src = f.read()
+        keys = set(key_pat.findall(src)) | set(switch_pat.findall(src)) | set(addprop_pat.findall(src))
+        literals = set(literal_pat.findall(src))
+        if keys or literals:
+            per_class[cls] = {'localization_keys': sorted(keys), 'literal_strings': sorted(literals)}
+
+with open(out, 'w') as f: json.dump(per_class, f, indent=2, sort_keys=True)
+print(f'wrote {out}: {len(per_class)} classes')
+PY

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Copy the latest data.json out of the game directory into the repo"
+set -euo pipefail
+
+cp "$MYCOPUNK_DIR/data.json" ./data.json
+echo "Copied $MYCOPUNK_DIR/data.json -> ./data.json"

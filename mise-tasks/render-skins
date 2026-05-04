@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#MISE description="Render PNG previews of every (gear, skin) combo via in-game render-to-texture. Requires Steam launch options WITHOUT -batchmode/-nographics."
+#MISE depends=["deploy"]
+set -uo pipefail
+
+GAME_PROC="Mycopunk.exe"
+FLAG="$MYCOPUNK_DIR/render-skins.flag"
+DONE="$MYCOPUNK_DIR/skin-previews.done"
+OUT_DIR="$MYCOPUNK_DIR/skin-previews"
+LOG="$MYCOPUNK_DIR/BepInEx/LogOutput.log"
+
+DUMPER_REPO="$(realpath "$(dirname "$0")/..")"
+VERSION=""
+if [ -f "$MYCOPUNK_DIR/data.json" ]; then
+    VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gameVersion",{}).get("Version",""))' "$MYCOPUNK_DIR/data.json" 2>/dev/null || echo "")
+fi
+DEST="${1:-${HOME}/MycopunkExtracted/${VERSION:-unknown}/skin-previews}"
+
+if ! pgrep -f "steamwebhelper " >/dev/null; then
+    echo "ERROR: Steam is not running. Start Steam first." >&2
+    exit 1
+fi
+
+cat <<EOF
+Skin renderer — checks before launching:
+
+  ⚠  Steam launch options for Mycopunk MUST NOT include -batchmode or -nographics.
+     Recommended: WINEDLLOVERRIDES="winhttp.dll=n,b" %command%
+     (i.e. drop the headless flags from your usual dump invocation; restore them after.)
+
+  Output destination: $DEST
+
+EOF
+
+# Clean stale state.
+pkill -f "$GAME_PROC" >/dev/null 2>&1 || true
+sleep 2
+rm -rf "$OUT_DIR" "$DONE" "$LOG"
+touch "$FLAG"
+
+steam "steam://rungameid/$MYCOPUNK_APPID" >/dev/null 2>&1 || true
+echo "Launched Mycopunk with skin-renderer enabled at $(date +%T); polling for completion (timeout 10min)…"
+
+# 30 frames per skin × ~223 skin/gear combos = ~6700 renders × 1 frame at 60fps
+# ≈ 110s. Add menu load (~10s) + safety margin → cap at 900s.
+for i in $(seq 1 300); do
+    if [ -f "$DONE" ]; then break; fi
+    sleep 3
+done
+rm -f "$FLAG"
+
+if [ ! -f "$DONE" ]; then
+    echo "ERROR: timeout — skin-previews.done never appeared. Last log lines:" >&2
+    tail -30 "$LOG" >&2 2>/dev/null || true
+    exit 1
+fi
+
+# Game self-quits at the end of RenderAll() but pkill belt-and-suspenders.
+sleep 2
+pkill -f "$GAME_PROC" >/dev/null 2>&1 || true
+
+FRAME_COUNT=$(find "$OUT_DIR" -name "*.jpg" 2>/dev/null | wc -l)
+SKIN_DIR_COUNT=$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+echo "Renderer finished. $FRAME_COUNT JPG frames across $SKIN_DIR_COUNT skin folders in $OUT_DIR ($(cat "$DONE"))"
+
+if [ "$FRAME_COUNT" -eq 0 ]; then
+    exit 0
+fi
+
+# Encode each per-skin frame folder into a single mp4 turntable. ffmpeg with
+# libx264 + yuv420p produces a widely-compatible video; -crf 20 keeps it small
+# without visible artifacts for the 30-frame loops.
+if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "ffmpeg not installed — leaving raw PNG frames at $OUT_DIR; install ffmpeg to auto-encode mp4s." >&2
+else
+    echo "Encoding mp4 turntables (12 fps loop, ~2.5s per skin)…"
+    encoded=0
+    for skin_dir in "$OUT_DIR"/*/; do
+        skin_name=$(basename "$skin_dir")
+        out_mp4="$skin_dir/$skin_name.mp4"
+        # 12 fps × 30 frames = 2.5s loop; -loop 0 doesn't apply to mp4 so consumers loop on play.
+        # 24 fps × 180 frames = 7.5s loop. Frames are .jpg (uncompressed,
+        # ~1MB each — fast to write, ffmpeg reads natively).
+        if ffmpeg -loglevel error -y \
+            -framerate 24 -i "$skin_dir/frame_%03d.jpg" \
+            -c:v libx264 -pix_fmt yuv420p -crf 20 -preset fast \
+            "$out_mp4" 2>/dev/null
+        then
+            encoded=$((encoded + 1))
+            # Reclaim disk: ~180 MB of TGA frames per skin → ~500 KB mp4.
+            rm -f "$skin_dir"/frame_*.jpg
+        fi
+    done
+    echo "Encoded $encoded mp4s."
+fi
+
+# Deliver to the destination dir. Copy the entire tree (folders + mp4s).
+mkdir -p "$DEST"
+cp -r "$OUT_DIR"/* "$DEST/"
+echo "Copied to $DEST"

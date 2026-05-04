@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Re-decompile $MYCOPUNK_DIR/Mycopunk_Data/Managed/Assembly-CSharp.dll into ./decompiled/ — run after game updates"
+set -euo pipefail
+
+ASSEMBLY="$MYCOPUNK_DIR/Mycopunk_Data/Managed/Assembly-CSharp.dll"
+OUT="$(dirname "$0")/../decompiled"
+ILSPYCMD="$HOME/.dotnet/tools/ilspycmd"
+
+if [ ! -f "$ASSEMBLY" ]; then
+    echo "Assembly not found: $ASSEMBLY" >&2
+    exit 1
+fi
+
+if [ ! -x "$ILSPYCMD" ]; then
+    echo "ilspycmd not found at $ILSPYCMD." >&2
+    echo "Install once with:" >&2
+    echo "  mise install dotnet@6 && DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 mise exec dotnet@6 -- dotnet tool install -g --version 8.2.0.7535 ilspycmd" >&2
+    echo "(Newer ilspycmd packages have a broken DotnetToolSettings.xml — pin 8.2.0.7535.)" >&2
+    exit 1
+fi
+
+# ilspycmd 8.2.0.7535 ships as a .NET 6 tool — run it under dotnet@6 explicitly so it
+# doesn't pick up the project's dotnet@8 SDK and fail with a missing libhostfxr.so.
+rm -rf "$OUT"
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 mise exec dotnet@6 -- "$ILSPYCMD" -p "$ASSEMBLY" -o "$OUT" >/dev/null
+file_count=$(find "$OUT" -name "*.cs" | wc -l)
+echo "Decompiled $ASSEMBLY → $OUT ($file_count .cs files)"

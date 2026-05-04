@@ -1,0 +1,21 @@
+[tools]
+dotnet = "8.0.420"
+
+[env]
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT = "1"
+MYCOPUNK_DIR = "{{env.HOME}}/.local/share/Steam/steamapps/common/Mycopunk"
+MYCOPUNK_APPID = "3247750"
+
+[tasks.build]
+description = "Build the BepInEx plugin (Debug)"
+run = "dotnet build src"
+
+[tasks.release]
+description = "Build the plugin in Release configuration"
+run = "dotnet build -c Release src"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "dotnet clean src"
+
+# `deploy`, `dump`, and `copy-dump` are file-based bash tasks under ./mise-tasks/

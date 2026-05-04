@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <Product>MycopunkDumper</Product>
+        <Version>1.0.0</Version>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <LangVersion>latest</LangVersion>
+        <RestoreAdditionalProjectSources>
+            https://api.nuget.org/v3/index.json;
+            https://nuget.bepinex.dev/v3/index.json;
+            https://nuget.samboy.dev/v3/index.json
+        </RestoreAdditionalProjectSources>
+        <RootNamespace>MycopunkDumper</RootNamespace>
+        <PackageId>MycopunkDumper</PackageId>
+        <!--
+          MSB3277: System.Net.Http version conflict between netstandard2.1 (4.1.2.0)
+          and Assembly-CSharp's transitive Mono reference (4.2.0.0). We never call
+          HttpClient ourselves — BepInEx/Unity supply the runtime — so the resolution
+          choice doesn't matter. Demote to message so the build log stays clean.
+        -->
+        <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all"/>
+        <PackageReference Include="BepInEx.Core" Version="5.*"/>
+        <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*"/>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageReference Include="UnityEngine.Modules" Version="2022.3.53" IncludeAssets="compile"/>
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <PropertyGroup>
+      <!-- MYCOPUNK_DIR is set by mise.toml; falls back to a Steam-Linux default. -->
+      <MycopunkManaged Condition="'$(MYCOPUNK_DIR)' != ''">$(MYCOPUNK_DIR)/Mycopunk_Data/Managed</MycopunkManaged>
+      <MycopunkManaged Condition="'$(MYCOPUNK_DIR)' == ''">$([System.Environment]::GetFolderPath(UserProfile))/.local/share/Steam/steamapps/common/Mycopunk/Mycopunk_Data/Managed</MycopunkManaged>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Reference Include="Assembly-CSharp" Publicize="true">
+        <HintPath>$(MycopunkManaged)/Assembly-CSharp.dll</HintPath>
+      </Reference>
+      <Reference Include="Unity.Netcode.Runtime">
+        <HintPath>$(MycopunkManaged)/Unity.Netcode.Runtime.dll</HintPath>
+      </Reference>
+      <Reference Include="Unity.RenderPipelines.Universal.Runtime">
+        <HintPath>$(MycopunkManaged)/Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
+      </Reference>
+      <Reference Include="Unity.RenderPipelines.Core.Runtime">
+        <HintPath>$(MycopunkManaged)/Unity.RenderPipelines.Core.Runtime.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- ../decompiled/ lives at the repo root: reference-only source, read
+           by us but excluded from the plugin build. -->
+      <Compile Remove="../decompiled/**/*.cs"/>
+      <None Include="../decompiled/**/*.cs"/>
+    </ItemGroup>
+
+
+</Project>

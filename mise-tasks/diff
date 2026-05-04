@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Side-by-side diff of two data.json dumps. Usage: mise run diff <old.json> <new.json> [section[/key]]"
+set -euo pipefail
+
+if [ "$#" -lt 2 ]; then
+    echo "Usage: mise run diff <old.json> <new.json> [section[/key]]" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  mise run diff data.json \$MYCOPUNK_DIR/data.json              # full diff" >&2
+    echo "  mise run diff data.json \$MYCOPUNK_DIR/data.json missions     # one section" >&2
+    echo "  mise run diff data.json \$MYCOPUNK_DIR/data.json upgrades/99770  # one entry" >&2
+    exit 2
+fi
+
+exec python3 "$(dirname "$0")/../tools/diff.py" "$@"

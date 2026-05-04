@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Build (Release) and copy the plugin DLL into Mycopunk's BepInEx/plugins"
+#MISE depends=["release"]
+set -euo pipefail
+
+cp src/bin/Release/netstandard2.1/MycopunkDumper.dll "$MYCOPUNK_DIR/BepInEx/plugins/MycopunkDumper.dll"
+echo "Deployed to $MYCOPUNK_DIR/BepInEx/plugins/MycopunkDumper.dll"

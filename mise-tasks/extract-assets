@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#MISE description="Extract Mycopunk's Unity assets (textures + everything else) via AssetRipper. Outputs to ~/MycopunkExtracted/<version>/"
+set -euo pipefail
+
+# Resolve target version. If not given, read from $MYCOPUNK_DIR/data.json
+# (which `mise run dump` writes). AssetRipper re-export of unchanged assets is
+# wasteful, so we segment the output dir by game version.
+VERSION="${1:-}"
+EXTRA="${2:-}"
+if [ -z "$VERSION" ] || [ "${VERSION:0:2}" = "--" ]; then
+    EXTRA="$VERSION"
+    VERSION=""
+    if [ -f "$MYCOPUNK_DIR/data.json" ]; then
+        VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gameVersion",{}).get("Version",""))' "$MYCOPUNK_DIR/data.json")
+    fi
+fi
+if [ -z "$VERSION" ]; then
+    echo "Usage: mise run extract-assets [<version>] [--force]" >&2
+    echo "  Version is read from \$MYCOPUNK_DIR/data.json if not given (run 'mise run dump' first)." >&2
+    exit 2
+fi
+
+# AssetRipper install. The official release is a self-contained linux binary
+# zipped under ~/Downloads/AssetRipper_linux_x64.zip. We unpack it once into
+# ~/Tools/AssetRipper and reuse on subsequent runs. Tested with v1.2.1.
+AR_DIR="$HOME/Tools/AssetRipper"
+AR_BIN="$AR_DIR/AssetRipper.GUI.Free"
+if [ ! -x "$AR_BIN" ]; then
+    ZIP="$HOME/Downloads/AssetRipper_linux_x64.zip"
+    if [ ! -f "$ZIP" ]; then
+        echo "AssetRipper not installed at $AR_BIN and $ZIP not found." >&2
+        echo "Download the Linux build from https://github.com/AssetRipper/AssetRipper/releases" >&2
+        echo "and place the zip at $ZIP, then re-run." >&2
+        exit 1
+    fi
+    echo "Installing AssetRipper into $AR_DIR..."
+    mkdir -p "$AR_DIR"
+    unzip -o -q "$ZIP" -d "$AR_DIR"
+    chmod +x "$AR_BIN"
+fi
+
+OUT="$HOME/MycopunkExtracted/$VERSION"
+TEX_DIR="$OUT/ExportedProject/Assets/Texture2D"
+if [ -d "$TEX_DIR" ] && [ "$EXTRA" != "--force" ]; then
+    count=$(find "$TEX_DIR" -name "*.png" 2>/dev/null | wc -l)
+    echo "Already extracted: $TEX_DIR ($count textures). Pass --force to redo."
+    exit 0
+fi
+mkdir -p "$OUT"
+
+# Headless AssetRipper exposes a REST API. Pin a random port to avoid colliding
+# with another instance (it falls back to a random port itself if 0 is given,
+# but we need to know the port to drive it via curl).
+PORT=$((49152 + RANDOM % 16383))
+LOG=$(mktemp -t assetripper.XXXXXX.log)
+echo "Starting AssetRipper on :$PORT (log: $LOG)..."
+"$AR_BIN" --port=$PORT --launch-browser=false --log=false >"$LOG" 2>&1 &
+AR_PID=$!
+# Best-effort cleanup. AssetRipper.GUI.Free is a single process, no children.
+cleanup() {
+    if kill -0 $AR_PID 2>/dev/null; then
+        kill $AR_PID 2>/dev/null || true
+        wait $AR_PID 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+# Wait for the HTTP server to bind (cold start is ~2s on first run, faster later).
+for i in $(seq 1 30); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT/" 2>/dev/null || echo 000)
+    [ "$code" = "200" ] && break
+    sleep 1
+done
+if [ "$code" != "200" ]; then
+    echo "AssetRipper failed to start on :$PORT — see $LOG" >&2
+    exit 1
+fi
+
+echo "Loading $MYCOPUNK_DIR/Mycopunk_Data..."
+load_code=$(curl -s -X POST --data-urlencode "Path=$MYCOPUNK_DIR/Mycopunk_Data" \
+    -o /dev/null -w "%{http_code}" "http://localhost:$PORT/LoadFolder")
+# 302 = redirect-to-result-page on success.
+if [ "$load_code" != "200" ] && [ "$load_code" != "302" ]; then
+    echo "LoadFolder failed (HTTP $load_code) — see $LOG" >&2
+    exit 1
+fi
+
+echo "Exporting to $OUT (5–15 minutes; 4.9 GB resources.assets.resS to walk)..."
+START=$(date +%s)
+export_code=$(curl -s --max-time 0 -X POST --data-urlencode "Path=$OUT" \
+    -o /dev/null -w "%{http_code}" "http://localhost:$PORT/Export/UnityProject")
+ELAPSED=$(( $(date +%s) - START ))
+if [ "$export_code" != "200" ] && [ "$export_code" != "302" ]; then
+    echo "Export failed (HTTP $export_code) after ${ELAPSED}s — see $LOG" >&2
+    exit 1
+fi
+
+if [ -d "$TEX_DIR" ]; then
+    count=$(find "$TEX_DIR" -name "*.png" 2>/dev/null | wc -l)
+    echo "Done in ${ELAPSED}s — $count textures at $TEX_DIR"
+else
+    echo "Export reported success but $TEX_DIR is missing — check $LOG" >&2
+    exit 1
+fi
