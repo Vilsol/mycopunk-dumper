@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#MISE description="Headless dump for CI: launches Mycopunk.exe directly under Proton (no Steam client). Same data.json contract as 'dump'. Requires PROTON_DIR pointing at an extracted Proton install."
+#MISE depends=["deploy"]
+set -uo pipefail
+
+: "${PROTON_DIR:?PROTON_DIR unset (must point at an extracted Proton-GE)}"
+
+DATA="$MYCOPUNK_DIR/data.json"
+LOG="$MYCOPUNK_DIR/BepInEx/LogOutput.log"
+
+rm -f "$DATA" "$LOG"
+
+# Proton needs these two env vars to operate: a writable prefix dir and any
+# plausible-looking steam install path. Neither has to be a real Steam.
+export STEAM_COMPAT_DATA_PATH="${STEAM_COMPAT_DATA_PATH:-$MYCOPUNK_DIR/_proton_prefix}"
+export STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}"
+mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
+
+# xvfb-run is a safety net: -batchmode -nographics should make Unity skip
+# rendering, but Wine occasionally pokes at X11 anyway and crashes without
+# a display.
+xvfb-run -a -- env \
+    WINEDLLOVERRIDES="winhttp.dll=n,b" \
+    "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" -batchmode -nographics &
+GAME_PID=$!
+
+echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 5min)..."
+
+for _ in $(seq 1 100); do
+    if [[ -s "$DATA" ]]; then break; fi
+    sleep 3
+done
+
+if [[ ! -s "$DATA" ]]; then
+    echo "ERROR: timeout — data.json never appeared. Last log lines:" >&2
+    tail -20 "$LOG" >&2 2>/dev/null || true
+    kill "$GAME_PID" 2>/dev/null || true
+    exit 1
+fi
+
+SIZE=$(stat -c%s "$DATA")
+echo "Wrote $DATA ($SIZE bytes) at $(date +%T)"
+
+kill "$GAME_PID" 2>/dev/null || true
+pkill -f Mycopunk.exe >/dev/null 2>&1 || true
+
+LABELS="$(dirname "$(realpath "$0")")/../property-labels.json"
+ENRICH="$(dirname "$(realpath "$0")")/../scripts/dump-enrich.py"
+if [[ -s "$LABELS" ]]; then
+    python3 "$ENRICH" "$DATA" "$LABELS"
+else
+    echo "(skipping label enrichment — run 'mise run extract-labels' to enable)"
+fi

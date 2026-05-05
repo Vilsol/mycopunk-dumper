@@ -32,6 +32,7 @@ VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameV
 BUILD_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["BuildID"])' "$DUMP_SRC")
 DUMPED_AT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["DumpedAt"])' "$DUMP_SRC")
 DUMPER_COMMIT=$(git -C "$DUMPER_REPO" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+STEAM_MANIFEST_ID="${STEAM_MANIFEST_ID:-}"
 
 if [ -z "$VERSION" ] || [ "$VERSION" = "None" ]; then
     echo "Could not read gameVersion.Version from $DUMP_SRC" >&2
@@ -87,19 +88,22 @@ else
 fi
 
 # 4. update index.json: insert/replace this version's entry, set latest, sort newest-first by dumpedAt
-python3 - "$DATA_REPO/index.json" "$VERSION" "$BUILD_ID" "$DUMPED_AT" "$DUMPER_COMMIT" "$SIZE" "$SHA256" <<'PY'
+python3 - "$DATA_REPO/index.json" "$VERSION" "$BUILD_ID" "$DUMPED_AT" "$DUMPER_COMMIT" "$SIZE" "$SHA256" "$STEAM_MANIFEST_ID" <<'PY'
 import json, sys
-path, version, build_id, dumped_at, dumper_commit, size, sha256 = sys.argv[1:]
+path, version, build_id, dumped_at, dumper_commit, size, sha256, steam_manifest_id = sys.argv[1:]
 idx = json.load(open(path))
 versions = [v for v in idx.get("versions", []) if v["version"] != version]
-versions.append({
+entry = {
     "version": version,
     "buildId": build_id,
     "dumpedAt": dumped_at,
     "dumperCommit": dumper_commit,
     "size": int(size),
     "sha256": sha256,
-})
+}
+if steam_manifest_id:
+    entry["steamManifestId"] = steam_manifest_id
+versions.append(entry)
 versions.sort(key=lambda v: v["dumpedAt"], reverse=True)
 idx["versions"] = versions
 idx["latest"] = versions[0]["version"]

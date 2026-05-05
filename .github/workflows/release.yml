@@ -1,0 +1,216 @@
+name: release
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the pipeline even if the Steam buildid is unchanged"
+        type: boolean
+        default: false
+      skip_assets:
+        description: "Skip AssetRipper extraction (~15min)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      MYCOPUNK_APPID: "3247750"
+      # The depot ID for the Linux/Windows build of Mycopunk. Confirm by running
+      # DepotDownloader without -depot once locally; it prints the depot list.
+      MYCOPUNK_DEPOT_ID: "3247751"
+      MYCOPUNK_DIR: ${{ github.workspace }}/_game
+      PROTON_VERSION: "GE-Proton9-20"
+      BEPINEX_VERSION: "5.4.23.2"
+      DEPOTDOWNLOADER_VERSION: "2.7.4"
+      STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+      STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
+    steps:
+      - name: Checkout dumper
+        uses: actions/checkout@v4
+        with:
+          path: dumper
+
+      - name: Checkout mycopunk-data
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mycopunk-data
+          path: mycopunk-data
+          ssh-key: ${{ secrets.MYCOPUNK_DATA_DEPLOY_KEY }}
+          persist-credentials: true
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb wine64 jq unzip ca-certificates
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          working_directory: dumper
+
+      - name: Install dotnet@6 + ilspycmd
+        working-directory: dumper
+        run: |
+          mise install dotnet@6
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 mise exec dotnet@6 -- \
+            dotnet tool install -g --version 8.2.0.7535 ilspycmd
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Cache DepotDownloader
+        id: cache-dd
+        uses: actions/cache@v4
+        with:
+          path: ~/tools/DepotDownloader
+          key: depotdownloader-${{ env.DEPOTDOWNLOADER_VERSION }}
+
+      - name: Install DepotDownloader
+        if: steps.cache-dd.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/tools/DepotDownloader
+          curl -L -o /tmp/dd.zip \
+            "https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_${DEPOTDOWNLOADER_VERSION}/DepotDownloader-linux-x64.zip"
+          unzip /tmp/dd.zip -d ~/tools/DepotDownloader
+          chmod +x ~/tools/DepotDownloader/DepotDownloader
+
+      - name: Configure DepotDownloader path
+        run: |
+          echo "DEPOTDOWNLOADER_BIN=$HOME/tools/DepotDownloader/DepotDownloader" >> "$GITHUB_ENV"
+
+      - name: Get current Steam manifest gid
+        id: manifest
+        working-directory: dumper
+        run: |
+          MID="$(mise run ci-buildid 2>/dev/null | tail -1)"
+          echo "Current Steam manifest gid: $MID"
+          echo "current=$MID" >> "$GITHUB_OUTPUT"
+
+      - name: Get last published Steam manifest gid
+        id: published
+        run: |
+          LAST="$(jq -r '
+            (.latest // "") as $l |
+            (.versions[]? | select(.version == $l) | .steamManifestId) // ""
+          ' mycopunk-data/index.json)"
+          echo "Last published Steam manifest gid: ${LAST:-<none>}"
+          echo "last=$LAST" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to run
+        id: gate
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "Running because force=true"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "${{ steps.published.outputs.last }}" ]; then
+            echo "No previous steamManifestId in index.json — running"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.manifest.outputs.current }}" != "${{ steps.published.outputs.last }}" ]; then
+            echo "Manifest changed: ${{ steps.published.outputs.last }} -> ${{ steps.manifest.outputs.current }}"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Manifest unchanged at ${{ steps.manifest.outputs.current }} — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache game depot
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.MYCOPUNK_DIR }}
+          key: mycopunk-depot-${{ steps.manifest.outputs.current }}
+
+      - name: Download game depot
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p "$MYCOPUNK_DIR"
+          "$DEPOTDOWNLOADER_BIN" \
+            -app "$MYCOPUNK_APPID" \
+            -depot "$MYCOPUNK_DEPOT_ID" \
+            -username "$STEAM_USERNAME" \
+            -password "$STEAM_PASSWORD" \
+            -os linux \
+            -dir "$MYCOPUNK_DIR"
+
+      - name: Cache Proton-GE
+        if: steps.gate.outputs.run == 'true'
+        id: cache-proton
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/proton
+          key: proton-${{ env.PROTON_VERSION }}
+
+      - name: Install Proton-GE
+        if: steps.gate.outputs.run == 'true' && steps.cache-proton.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/proton"
+          curl -L -o /tmp/proton.tar.gz \
+            "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/${PROTON_VERSION}/${PROTON_VERSION}.tar.gz"
+          tar -xzf /tmp/proton.tar.gz -C "$RUNNER_TEMP/proton" --strip-components=1
+
+      - name: Cache BepInEx
+        if: steps.gate.outputs.run == 'true'
+        id: cache-bepinex
+        uses: actions/cache@v4
+        with:
+          path: ~/tools/bepinex.zip
+          key: bepinex-${{ env.BEPINEX_VERSION }}
+
+      - name: Install BepInEx into game dir
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p ~/tools
+          if [ ! -f ~/tools/bepinex.zip ]; then
+            curl -L -o ~/tools/bepinex.zip \
+              "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_x64_${BEPINEX_VERSION}.zip"
+          fi
+          unzip -o ~/tools/bepinex.zip -d "$MYCOPUNK_DIR"
+          mkdir -p "$MYCOPUNK_DIR/BepInEx/plugins"
+
+      - name: Run release pipeline
+        if: steps.gate.outputs.run == 'true'
+        working-directory: dumper
+        env:
+          DUMP_TASK: ci-dump
+          STEAM_MANIFEST_ID: ${{ steps.manifest.outputs.current }}
+          SKIP_ASSETS: ${{ inputs.skip_assets && '1' || '0' }}
+          PROTON_DIR: ${{ runner.temp }}/proton
+        run: |
+          mise run release-version "${{ github.workspace }}/mycopunk-data"
+
+      - name: Commit and push to mycopunk-data
+        if: steps.gate.outputs.run == 'true'
+        working-directory: mycopunk-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data schema/data.schema.json index.json _redirects
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          VERSION="$(jq -r .latest index.json)"
+          BUILD_ID="$(jq -r --arg v "$VERSION" '.versions[] | select(.version==$v) | .buildId' index.json)"
+          git commit -m "release $VERSION (build $BUILD_ID)"
+          git push origin HEAD:main
+
+      - name: Upload diagnostics on failure
+        if: failure() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ github.run_id }}
+          path: |
+            ${{ env.MYCOPUNK_DIR }}/BepInEx/LogOutput.log
+            ${{ env.MYCOPUNK_DIR }}/data.json
+          if-no-files-found: ignore
+          retention-days: 90

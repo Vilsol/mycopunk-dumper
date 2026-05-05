@@ -24,7 +24,11 @@ mise run probe       # like dump but with the probe enabled (writes $MYCOPUNK_DI
 mise run copy-dump   # copy $MYCOPUNK_DIR/data.json into the repo
 mise run decompile   # re-decompile Assembly-CSharp.dll into ./decompiled/ (run after game updates)
 mise run diff <old> <new> [section[/key]]  # side-by-side dump diff via tools/diff.py — strips noisy `instanceID`/`ID` keys
+mise run ci-buildid  # CI-only: print current Steam public-branch manifest gid (needs STEAM_USERNAME/PASSWORD + DepotDownloader; assumes Steam Guard is disabled on the account)
+mise run ci-dump     # CI-only: same contract as `dump` but launches Mycopunk.exe directly under Proton (needs $PROTON_DIR pointing at an extracted Proton install). Used by .github/workflows/release.yml.
 ```
+
+`release-version` honours two env vars: `DUMP_TASK` (default `dump`; CI sets it to `ci-dump`) selects the dump task it invokes, and `STEAM_MANIFEST_ID` (passed through to `release-dump`) gets stamped onto the new `index.json` entry as `steamManifestId` so the autonomous workflow can no-op when the Steam manifest gid hasn't moved. Locally, both unset → behaviour is unchanged from before. The dump-time enrichment with `property-labels.json` lives in `scripts/dump-enrich.py` (shared by `dump` and `ci-dump`); modify it there if you change the merge logic. `release-version` now runs `mise run extract-labels` between decompile and build so the enrichment is always fresh.
 
 `mise run dump` requires Steam already running and these Steam launch options on the game (Properties → Launch Options):
 
@@ -114,6 +118,10 @@ mise exec bun -- bun x ajv-cli@latest validate \
 ```
 
 The `--spec=draft2020` flag is required (default is draft-07; the schema uses 2020-12 features). Validation failures print the JSON path + failed keyword — use that to find the missing schema entry.
+
+## Autonomous CI
+
+`.github/workflows/release.yml` runs `release-version` end-to-end on a 6-hour cron + `workflow_dispatch`. It uses a dedicated bot Steam account with **Steam Guard disabled** (so DepotDownloader logs in with just `-username` / `-password`, no 2FA scaffolding) to drive both the manifest check and the depot download, runs the game under Proton-GE, and pushes results to the sibling `mycopunk-data` repo via an SSH deploy key (`MYCOPUNK_DATA_DEPLOY_KEY`). Each run early-exits when Steam's current manifest gid matches the published `latest.steamManifestId`, so no-op runs are ~30 s. Full design + secrets list + one-time setup are in `docs/superpowers/specs/2026-05-06-autonomous-release-workflow-design.md`.
 
 ## Conventions
 

@@ -17,12 +17,18 @@ fi
 
 step() { printf "\n\033[1;36m===== %s =====\033[0m\n" "$1"; }
 
-step "1/6  Re-decompile Assembly-CSharp.dll"
+step "1/7  Re-decompile Assembly-CSharp.dll"
 # Decompiled source frequently drifts after a game update — re-extracting it
 # now means subsequent grep-the-source workflows see the new API surface.
 mise run decompile
 
-step "2/6  Build plugin (Release)"
+step "2/7  Extract localization labels"
+# Static analysis over decompiled/UpgradeProperty_*.cs surfaces localization
+# keys that runtime sampling can miss. Output goes to property-labels.json,
+# which the dump task picks up automatically for Properties[i].LocalizationKeys.
+mise run extract-labels
+
+step "3/7  Build plugin (Release)"
 # Build before dumping. If the game's API changed (e.g. v1.7.3 → v1.8 dropped
 # ObjectiveBase.Title), the compiler tells us exactly which line to patch
 # before wasting time on a dump that can't run.
@@ -40,9 +46,10 @@ EOF
     exit 1
 fi
 
-step "3/6  Dump the game"
+step "4/7  Dump the game"
 # This deploys the freshly-built DLL and launches Mycopunk headless. ~25s.
-mise run dump
+# DUMP_TASK lets CI swap in 'ci-dump' (direct Proton launch, no Steam client).
+mise run "${DUMP_TASK:-dump}"
 
 DUMP="$MYCOPUNK_DIR/data.json"
 if [ ! -f "$DUMP" ]; then
@@ -53,7 +60,7 @@ VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameV
 BUILD_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["BuildID"])' "$DUMP")
 echo "  Game reported: $VERSION (build $BUILD_ID)"
 
-step "4/6  Validate dump against schema"
+step "5/7  Validate dump against schema"
 # Bun's `bun x` resolves ajv-cli's bin entrypoint correctly; the data file
 # already has a .json extension so we don't hit the ajv-cli extension-sniffing
 # bug that bit the GitHub CI.
@@ -62,13 +69,13 @@ mise exec bun -- bun x ajv-cli@latest validate \
     -s "$DUMPER_REPO/data.schema.json" \
     -d "$DUMP"
 
-step "5/6  Release $VERSION into $DATA_REPO"
+step "6/7  Release $VERSION into $DATA_REPO"
 mise run release-dump "$DATA_REPO"
 
 if [ "$SKIP_ASSETS" = "1" ]; then
-    step "6/6  Skipped asset extraction (SKIP_ASSETS=1)"
+    step "7/7  Skipped asset extraction (SKIP_ASSETS=1)"
 else
-    step "6/6  Extract Unity assets (~15min) — Ctrl-C is safe; re-run later with mise run extract-assets"
+    step "7/7  Extract Unity assets (~15min) — Ctrl-C is safe; re-run later with mise run extract-assets"
     mise run extract-assets
 fi
 

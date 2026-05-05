@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Print the current Steam manifest gid for app $MYCOPUNK_APPID's public-branch depot to stdout. Reads STEAM_USERNAME / STEAM_PASSWORD / DEPOTDOWNLOADER_BIN from env. Assumes Steam Guard is disabled on the account."
+set -euo pipefail
+
+: "${STEAM_USERNAME:?STEAM_USERNAME unset}"
+: "${STEAM_PASSWORD:?STEAM_PASSWORD unset}"
+: "${DEPOTDOWNLOADER_BIN:?DEPOTDOWNLOADER_BIN unset (path to DepotDownloader binary)}"
+: "${MYCOPUNK_APPID:?MYCOPUNK_APPID unset}"
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+OUTPUT="$TMPDIR/dd.log"
+"$DEPOTDOWNLOADER_BIN" \
+    -app "$MYCOPUNK_APPID" \
+    -username "$STEAM_USERNAME" \
+    -password "$STEAM_PASSWORD" \
+    -manifest-only \
+    -os linux \
+    -dir "$TMPDIR/dl" \
+    >"$OUTPUT" 2>&1 || {
+        echo "DepotDownloader failed; last 20 lines:" >&2
+        tail -20 "$OUTPUT" >&2
+        exit 1
+    }
+
+# Output line shape (DepotDownloader 2.x): "Manifest <gid> (<creation timestamp>)".
+# Anchored to ^Manifest so we don't pick up the "Got manifest request code" or
+# "Downloading depot manifest" lines.
+MANIFEST_ID="$(awk '/^Manifest [0-9]+ \(/ {print $2; exit}' "$OUTPUT")"
+if [ -z "${MANIFEST_ID:-}" ]; then
+    echo "ERROR: could not parse manifest gid from DepotDownloader output:" >&2
+    cat "$OUTPUT" >&2
+    exit 1
+fi
+echo "$MANIFEST_ID"

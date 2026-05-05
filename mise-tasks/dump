@@ -44,30 +44,9 @@ pkill -f Mycopunk.exe >/dev/null 2>&1 || true
 # of localization keys that property class can emit — including keys hidden inside conditionals
 # / switch expressions that runtime sampling can miss.
 LABELS="$(dirname "$(realpath "$0")")/../property-labels.json"
+ENRICH="$(dirname "$(realpath "$0")")/../scripts/dump-enrich.py"
 if [[ -s "$LABELS" ]]; then
-    python3 - "$DATA" "$LABELS" <<'PY'
-import json, sys
-data_path, labels_path = sys.argv[1], sys.argv[2]
-with open(data_path) as f: d = json.load(f)
-with open(labels_path) as f: labels = json.load(f)
-
-n_enriched = 0
-for upgrade in d.get('upgrades', {}).values():
-    for p in upgrade.get('Properties') or []:
-        info = labels.get(p.get('Type'))
-        if info and info.get('localization_keys'):
-            p['LocalizationKeys'] = info['localization_keys']
-            n_enriched += 1
-for directive in d.get('directives', {}).values():
-    for p in directive.get('Properties') or []:
-        info = labels.get(p.get('Type'))
-        if info and info.get('localization_keys'):
-            p['LocalizationKeys'] = info['localization_keys']
-            n_enriched += 1
-
-with open(data_path, 'w') as f: json.dump(d, f, separators=(',', ':'))
-print(f'Enriched {n_enriched} property entries with LocalizationKeys from {labels_path}')
-PY
+    python3 "$ENRICH" "$DATA" "$LABELS"
 else
     echo "(skipping label enrichment — run 'mise run extract-labels' to enable)"
 fi
