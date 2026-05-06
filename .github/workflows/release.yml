@@ -261,6 +261,41 @@ jobs:
             cp ~/tools/gbe/steam_api64.dll "$MYCOPUNK_DIR/steam_api64.dll"
           fi
 
+      - name: Configure gbe_fork branches.json with real Steam build_id
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          # Without a steam_settings/branches.json, gbe_fork's SteamApps.BuildId()
+          # returns its hardcoded fallback (10), making the dump's gameVersion.BuildID
+          # useless. Fetch the real public-branch build_id from Steam (anonymous
+          # AppInfo, no auth needed for public app metadata) and write a proper
+          # branches.json next to the emu DLL so Global.BuildID returns the real value.
+          python3 -m pip install --user --quiet 'steam[client]'
+          SETTINGS_DIR="$MYCOPUNK_DIR/Mycopunk_Data/Plugins/x86_64/steam_settings"
+          mkdir -p "$SETTINGS_DIR"
+          python3 - "$SETTINGS_DIR/branches.json" "$MYCOPUNK_APPID" <<'PY'
+          import json, sys, time
+          from steam.client import SteamClient
+          out_path, appid = sys.argv[1], int(sys.argv[2])
+          c = SteamClient()
+          if not c.anonymous_login():
+              raise SystemExit("anonymous Steam login failed")
+          info = c.get_product_info(apps=[appid])
+          branches = info["apps"][appid]["depots"]["branches"]
+          out = []
+          for name, data in branches.items():
+              out.append({
+                  "name": name,
+                  "description": data.get("description", ""),
+                  "protected": "pwdrequired" in data,
+                  "build_id": int(data.get("buildid", 0)),
+                  "time_updated": int(data.get("timeupdated", time.time())),
+              })
+          with open(out_path, "w") as f:
+              json.dump(out, f, indent=2)
+          public = next((b["build_id"] for b in out if b["name"] == "public"), None)
+          print(f"Wrote {out_path}: {len(out)} branches; public build_id={public}")
+          PY
+
       - name: Run release pipeline
         if: steps.gate.outputs.run == 'true'
         working-directory: dumper
@@ -297,7 +332,6 @@ jobs:
           path: |
             ${{ env.MYCOPUNK_DIR }}/BepInEx/LogOutput.log
             ${{ env.MYCOPUNK_DIR }}/unity.log
-            ${{ env.MYCOPUNK_DIR }}/mono-trace.log
             ${{ env.MYCOPUNK_DIR }}/data.json
           if-no-files-found: ignore
           retention-days: 90
