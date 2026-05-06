@@ -31,7 +31,7 @@ jobs:
       MYCOPUNK_DEPOT_ID: "3247751"
       MYCOPUNK_DIR: ${{ github.workspace }}/_game
       PROTON_VERSION: "GE-Proton9-20"
-      BEPINEX_VERSION: "5.4.23.2"
+      BEPINEX_VERSION: "5.4.23.5"
       DEPOTDOWNLOADER_VERSION: "3.4.0"
       STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
       STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
@@ -79,7 +79,7 @@ jobs:
         if: steps.cache-dd.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/tools/DepotDownloader
-          curl -L -o /tmp/dd.zip \
+          curl -fL -o /tmp/dd.zip \
             "https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_${DEPOTDOWNLOADER_VERSION}/DepotDownloader-linux-x64.zip"
           unzip /tmp/dd.zip -d ~/tools/DepotDownloader
           chmod +x ~/tools/DepotDownloader/DepotDownloader
@@ -154,7 +154,7 @@ jobs:
         if: steps.gate.outputs.run == 'true' && steps.cache-proton.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/proton"
-          curl -L -o /tmp/proton.tar.gz \
+          curl -fL -o /tmp/proton.tar.gz \
             "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/${PROTON_VERSION}/${PROTON_VERSION}.tar.gz"
           tar -xzf /tmp/proton.tar.gz -C "$RUNNER_TEMP/proton" --strip-components=1
 
@@ -171,8 +171,8 @@ jobs:
         run: |
           mkdir -p ~/tools
           if [ ! -f ~/tools/bepinex.zip ]; then
-            curl -L -o ~/tools/bepinex.zip \
-              "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_x64_${BEPINEX_VERSION}.zip"
+            curl -fL -o ~/tools/bepinex.zip \
+              "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_win_x64_${BEPINEX_VERSION}.zip"
           fi
           unzip -o ~/tools/bepinex.zip -d "$MYCOPUNK_DIR"
           mkdir -p "$MYCOPUNK_DIR/BepInEx/plugins"
