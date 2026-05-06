@@ -32,7 +32,7 @@ jobs:
       MYCOPUNK_DIR: ${{ github.workspace }}/_game
       PROTON_VERSION: "GE-Proton9-20"
       BEPINEX_VERSION: "5.4.23.2"
-      DEPOTDOWNLOADER_VERSION: "2.7.4"
+      DEPOTDOWNLOADER_VERSION: "3.4.0"
       STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
       STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
     steps:
