@@ -3,7 +3,8 @@
 #MISE depends=["deploy"]
 set -uo pipefail
 
-: "${PROTON_DIR:?PROTON_DIR unset (must point at an extracted Proton-GE)}"
+: "${PROTON_DIR:?PROTON_DIR unset (must point at an extracted Proton install)}"
+: "${UMU_RUN:?UMU_RUN unset (must point at the umu-run zipapp)}"
 
 DATA="$MYCOPUNK_DIR/data.json"
 LOG="$MYCOPUNK_DIR/BepInEx/LogOutput.log"
@@ -13,29 +14,37 @@ rm -f "$DATA" "$LOG" "$UNITY_LOG"
 
 # Skip the "is Steam running?" check inside Steamworks SDK. Without this the
 # game hangs forever in SteamAPI_Init() because there's no Steam client in CI.
-# The SteamAppId / SteamGameId env vars cover games that read them instead of
-# the file (or in addition).
 echo "$MYCOPUNK_APPID" > "$MYCOPUNK_DIR/steam_appid.txt"
 export SteamAppId="$MYCOPUNK_APPID"
 export SteamGameId="$MYCOPUNK_APPID"
 
-# Proton needs these two env vars to operate: a writable prefix dir and any
-# plausible-looking steam install path. Neither has to be a real Steam.
-export STEAM_COMPAT_DATA_PATH="${STEAM_COMPAT_DATA_PATH:-$MYCOPUNK_DIR/_proton_prefix}"
-export STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}"
-mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
+# umu-launcher creates and manages its own Wine prefix under WINEPREFIX; it
+# wires up STEAM_COMPAT_* internally so we don't need to set those ourselves.
+export WINEPREFIX="$MYCOPUNK_DIR/_umu_prefix"
+mkdir -p "$WINEPREFIX"
 
 # Unity 6 in -batchmode -nographics still allocates a hidden window for
 # input event routing; without ANY display it dies with "Failed to create
-# batch mode window: Success." So we run under xvfb with an explicit
-# 24-bit screen depth (default is 8-bit, which some Unity versions reject)
-# so Xvfb is fully formed enough for Unity's window creation to succeed.
+# batch mode window: Success." Run under xvfb with explicit 24-bit screen
+# depth (default 8-bit makes Unity 6 unhappy) and the RANDR extension
+# enabled (Unity probes for it).
+#
+# Launch via umu-run rather than 'proton run' directly: umu sets up Steam's
+# Linux runtime container so Proton-bundled tools like Xalia find the
+# libraries they expect. Without it, Xalia init throws "Video driver
+# not supported" before our game even starts.
+#
+# GAMEID=umu-default + STORE=none = "no umu-database fixes needed";
+# PROTONPATH points at the Proton install our workflow already pre-extracted.
 # -logFile redirects Unity's Player.log out of the Proton prefix into
-# MYCOPUNK_DIR/unity.log.
+# MYCOPUNK_DIR/unity.log so we can actually read it.
 xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24 +extension RANDR" -- env \
     WINEDLLOVERRIDES="winhttp.dll=n,b" \
+    GAMEID="umu-default" \
+    STORE="none" \
+    PROTONPATH="$PROTON_DIR" \
     PROTON_XALIA=0 \
-    "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" \
+    "$UMU_RUN" "$MYCOPUNK_DIR/Mycopunk.exe" \
     -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!
 

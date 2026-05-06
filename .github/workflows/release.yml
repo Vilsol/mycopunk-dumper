@@ -39,6 +39,11 @@ jobs:
       # C:\Program Files (x86)\Steam\steamclient64.dll, fails, and the game's
       # init chain NREs all the way through Global.Instance.
       GBE_VERSION: "release-2026_04_25"
+      # umu-launcher mimics Steam's Linux runtime container so Proton tools
+      # like Xalia find the libraries they expect, instead of failing on the
+      # host with "Video driver  not supported". Documented as the headless
+      # path for "Steam game without Steam".
+      UMU_VERSION: "1.4.0"
       STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
       STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
     steps:
@@ -174,6 +179,33 @@ jobs:
           path: ~/tools/bepinex.zip
           key: bepinex-${{ env.BEPINEX_VERSION }}
 
+      - name: Cache umu-launcher binary
+        if: steps.gate.outputs.run == 'true'
+        id: cache-umu
+        uses: actions/cache@v4
+        with:
+          path: ~/tools/umu
+          key: umu-${{ env.UMU_VERSION }}
+
+      - name: Install umu-launcher
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if [ ! -x ~/tools/umu/umu-run ]; then
+            mkdir -p ~/tools/umu
+            curl -fL -o /tmp/umu.tar \
+              "https://github.com/Open-Wine-Components/umu-launcher/releases/download/${UMU_VERSION}/umu-launcher-${UMU_VERSION}-zipapp.tar"
+            tar -xf /tmp/umu.tar -C ~/tools/umu --strip-components=1
+            chmod +x ~/tools/umu/umu-run
+          fi
+          echo "UMU_RUN=$HOME/tools/umu/umu-run" >> $GITHUB_ENV
+
+      - name: Cache umu Steam runtime download
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/umu
+          key: umu-runtime-${{ env.UMU_VERSION }}
+
       - name: Install BepInEx into game dir
         if: steps.gate.outputs.run == 'true'
         run: |
@@ -237,6 +269,7 @@ jobs:
           STEAM_MANIFEST_ID: ${{ steps.manifest.outputs.current }}
           SKIP_ASSETS: ${{ inputs.skip_assets && '1' || '0' }}
           PROTON_DIR: ${{ runner.temp }}/proton
+          # UMU_RUN is exported into GITHUB_ENV by the "Install umu-launcher" step
         run: |
           mise run release-version "${{ github.workspace }}/mycopunk-data"
 
