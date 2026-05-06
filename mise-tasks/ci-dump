@@ -25,15 +25,15 @@ export STEAM_COMPAT_DATA_PATH="${STEAM_COMPAT_DATA_PATH:-$MYCOPUNK_DIR/_proton_p
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}"
 mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
 
-# Run truly headless: no DISPLAY, no xvfb. Unity 6's InputSystem .cctor
-# fails when it sees a virtual display with no input devices (xvfb's case),
-# which cascades into our plugin's AddComponent throwing TypeLoadException.
-# With DISPLAY unset, -batchmode -nographics actually means "no input/graphics
-# subsystem" and InputSystem's static init skips device enumeration cleanly.
+# Unity 6 in -batchmode -nographics still allocates a hidden window for
+# input event routing; without ANY display it dies with "Failed to create
+# batch mode window: Success." So we run under xvfb with an explicit
+# 24-bit screen depth (default is 8-bit, which some Unity versions reject)
+# so Xvfb is fully formed enough for Unity's window creation to succeed.
 # -logFile redirects Unity's Player.log out of the Proton prefix into
 # MYCOPUNK_DIR/unity.log.
-unset DISPLAY
-env WINEDLLOVERRIDES="winhttp.dll=n,b" \
+xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24 +extension RANDR" -- env \
+    WINEDLLOVERRIDES="winhttp.dll=n,b" \
     "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" \
     -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!

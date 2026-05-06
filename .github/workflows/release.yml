@@ -30,7 +30,7 @@ jobs:
       # DepotDownloader without -depot once locally; it prints the depot list.
       MYCOPUNK_DEPOT_ID: "3247751"
       MYCOPUNK_DIR: ${{ github.workspace }}/_game
-      PROTON_VERSION: "GE-Proton9-20"
+      PROTON_VERSION: "GE-Proton10-34"
       BEPINEX_VERSION: "5.4.23.5"
       DEPOTDOWNLOADER_VERSION: "3.4.0"
       # gbe_fork (maintained Goldberg Steam Emu fork). The drop-in replacement
