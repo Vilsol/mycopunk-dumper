@@ -3,5 +3,18 @@
 #MISE depends=["release"]
 set -euo pipefail
 
-cp src/bin/Release/netstandard2.1/MycopunkDumper.dll "$MYCOPUNK_DIR/BepInEx/plugins/MycopunkDumper.dll"
-echo "Deployed to $MYCOPUNK_DIR/BepInEx/plugins/MycopunkDumper.dll"
+DEST="$MYCOPUNK_DIR/BepInEx/plugins"
+mkdir -p "$DEST"
+cp src/bin/Release/netstandard2.1/MycopunkDumper.dll "$DEST/MycopunkDumper.dll"
+# The build output dir contains every assembly the publicizer touched
+# (Assembly-CSharp, Wwise, Discord, …). Don't blanket-copy — most are
+# game-shipped and would shadow the real ones at runtime. Only ship the
+# genuine *external* NuGet deps our plugin needs, by name.
+for dep in Newtonsoft.Json.dll; do
+    src="src/bin/Release/netstandard2.1/$dep"
+    if [ -f "$src" ]; then
+        cp "$src" "$DEST/$dep"
+        echo "Deployed dep: $dep"
+    fi
+done
+echo "Deployed plugin to $DEST/MycopunkDumper.dll"

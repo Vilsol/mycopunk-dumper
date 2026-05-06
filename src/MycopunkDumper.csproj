@@ -20,6 +20,16 @@
           choice doesn't matter. Demote to message so the build log stays clean.
         -->
         <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
+        <!--
+          For class libs, NuGet PackageReference assemblies (e.g.
+          Newtonsoft.Json) are not copied to bin/ by default — only directly
+          referenced game DLLs are. We need Newtonsoft.Json.dll alongside our
+          plugin at runtime (BepInEx 5 doesn't ship it; the game's Managed/
+          doesn't ship it either), so force PackageReference DLLs into the
+          output. The deploy script then cherry-picks only the genuine
+          external deps to ship into BepInEx/plugins/.
+        -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     </PropertyGroup>
 
     <ItemGroup>
