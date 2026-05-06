@@ -3,7 +3,7 @@ dotnet = "8.0.420"
 
 [env]
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT = "1"
-MYCOPUNK_DIR = "{{env.HOME}}/.local/share/Steam/steamapps/common/Mycopunk"
+MYCOPUNK_DIR = '{{ get_env(name="MYCOPUNK_DIR", default=env.HOME ~ "/.local/share/Steam/steamapps/common/Mycopunk") }}'
 MYCOPUNK_APPID = "3247750"
 
 [tasks.build]
