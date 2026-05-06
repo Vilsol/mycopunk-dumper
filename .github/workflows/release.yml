@@ -211,6 +211,7 @@ jobs:
           name: diagnostics-${{ github.run_id }}
           path: |
             ${{ env.MYCOPUNK_DIR }}/BepInEx/LogOutput.log
+            ${{ env.MYCOPUNK_DIR }}/unity.log
             ${{ env.MYCOPUNK_DIR }}/data.json
           if-no-files-found: ignore
           retention-days: 90

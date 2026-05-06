@@ -7,8 +7,17 @@ set -uo pipefail
 
 DATA="$MYCOPUNK_DIR/data.json"
 LOG="$MYCOPUNK_DIR/BepInEx/LogOutput.log"
+UNITY_LOG="$MYCOPUNK_DIR/unity.log"
 
-rm -f "$DATA" "$LOG"
+rm -f "$DATA" "$LOG" "$UNITY_LOG"
+
+# Skip the "is Steam running?" check inside Steamworks SDK. Without this the
+# game hangs forever in SteamAPI_Init() because there's no Steam client in CI.
+# The SteamAppId / SteamGameId env vars cover games that read them instead of
+# the file (or in addition).
+echo "$MYCOPUNK_APPID" > "$MYCOPUNK_DIR/steam_appid.txt"
+export SteamAppId="$MYCOPUNK_APPID"
+export SteamGameId="$MYCOPUNK_APPID"
 
 # Proton needs these two env vars to operate: a writable prefix dir and any
 # plausible-looking steam install path. Neither has to be a real Steam.
@@ -18,22 +27,27 @@ mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
 
 # xvfb-run is a safety net: -batchmode -nographics should make Unity skip
 # rendering, but Wine occasionally pokes at X11 anyway and crashes without
-# a display.
+# a display. -logFile redirects Unity's Player.log out of the Proton prefix
+# (where we'd never see it) into MYCOPUNK_DIR.
 xvfb-run -a -- env \
     WINEDLLOVERRIDES="winhttp.dll=n,b" \
-    "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" -batchmode -nographics &
+    "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" \
+    -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!
 
-echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 5min)..."
+echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 10min)..."
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 200); do
     if [[ -s "$DATA" ]]; then break; fi
     sleep 3
 done
 
 if [[ ! -s "$DATA" ]]; then
-    echo "ERROR: timeout — data.json never appeared. Last log lines:" >&2
-    tail -20 "$LOG" >&2 2>/dev/null || true
+    echo "ERROR: timeout — data.json never appeared." >&2
+    echo "--- BepInEx LogOutput.log (last 40) ---" >&2
+    tail -40 "$LOG" >&2 2>/dev/null || echo "(no BepInEx log)" >&2
+    echo "--- Unity Player log (last 60) ---" >&2
+    tail -60 "$UNITY_LOG" >&2 2>/dev/null || echo "(no unity log)" >&2
     kill "$GAME_PID" 2>/dev/null || true
     exit 1
 fi
