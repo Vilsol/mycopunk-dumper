@@ -38,14 +38,24 @@ mkdir -p "$WINEPREFIX"
 # PROTONPATH points at the Proton install our workflow already pre-extracted.
 # -logFile redirects Unity's Player.log out of the Proton prefix into
 # MYCOPUNK_DIR/unity.log so we can actually read it.
+# MONO_LOG_LEVEL=debug + MONO_LOG_MASK=type prints every type load attempt
+# (verbose) so we can see exactly which Type fails when BepInEx's Chainloader
+# does AddComponent(MycopunkDumper.Plugin). Unity's bundled Mono respects
+# these env vars. We funnel the chatter into a separate file so it doesn't
+# drown the main stdout.
+MONO_TRACE="$MYCOPUNK_DIR/mono-trace.log"
+rm -f "$MONO_TRACE"
+
 xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24 +extension RANDR" -- env \
     WINEDLLOVERRIDES="winhttp.dll=n,b" \
     GAMEID="umu-default" \
     STORE="none" \
     PROTONPATH="$PROTON_DIR" \
     PROTON_XALIA=0 \
+    MONO_LOG_LEVEL=debug \
+    MONO_LOG_MASK=type \
     "$UMU_RUN" "$MYCOPUNK_DIR/Mycopunk.exe" \
-    -batchmode -nographics -logFile "Z:$UNITY_LOG" &
+    -batchmode -nographics -logFile "Z:$UNITY_LOG" 2>>"$MONO_TRACE" &
 GAME_PID=$!
 
 echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 5min)..."
@@ -67,6 +77,8 @@ if [[ ! -s "$DATA" ]]; then
     while IFS= read -r -d '' f; do
         printf '%s  %s  %s\n' "$(stat -c%s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)" "$f" >&2
     done < <(find "$MYCOPUNK_DIR" -iname 'steam_api*.dll' -print0)
+    echo "--- Mono type-trace lines mentioning TypeLoadException or our plugin ---" >&2
+    command grep -E "TypeLoadException|MycopunkDumper|Failed to load|Could not load" "$MONO_TRACE" 2>/dev/null | head -40 >&2 || echo "(no mono-trace match)" >&2
     kill "$GAME_PID" 2>/dev/null || true
     exit 1
 fi
