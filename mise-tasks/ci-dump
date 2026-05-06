@@ -35,19 +35,25 @@ xvfb-run -a -- env \
     -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!
 
-echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 10min)..."
+echo "Launched Mycopunk under Proton (pid $GAME_PID) at $(date +%T); waiting for data.json (up to 5min)..."
 
-for _ in $(seq 1 200); do
+for _ in $(seq 1 100); do
     if [[ -s "$DATA" ]]; then break; fi
     sleep 3
 done
 
 if [[ ! -s "$DATA" ]]; then
     echo "ERROR: timeout — data.json never appeared." >&2
-    echo "--- BepInEx LogOutput.log (last 40) ---" >&2
-    tail -40 "$LOG" >&2 2>/dev/null || echo "(no BepInEx log)" >&2
+    echo "--- BepInEx LogOutput.log (full) ---" >&2
+    cat "$LOG" >&2 2>/dev/null || echo "(no BepInEx log)" >&2
     echo "--- Unity Player log (last 60) ---" >&2
     tail -60 "$UNITY_LOG" >&2 2>/dev/null || echo "(no unity log)" >&2
+    echo "--- Any data.json under MYCOPUNK_DIR (in case Paths.GameRootPath resolved unexpectedly) ---" >&2
+    find "$MYCOPUNK_DIR" -name 'data.json' -size +0 2>/dev/null >&2 || true
+    echo "--- steam_api*.dll inventory (size + sha256) ---" >&2
+    while IFS= read -r -d '' f; do
+        printf '%s  %s  %s\n' "$(stat -c%s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)" "$f" >&2
+    done < <(find "$MYCOPUNK_DIR" -iname 'steam_api*.dll' -print0)
     kill "$GAME_PID" 2>/dev/null || true
     exit 1
 fi

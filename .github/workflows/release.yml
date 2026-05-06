@@ -181,7 +181,19 @@ jobs:
               "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_win_x64_${BEPINEX_VERSION}.zip"
           fi
           unzip -o ~/tools/bepinex.zip -d "$MYCOPUNK_DIR"
-          mkdir -p "$MYCOPUNK_DIR/BepInEx/plugins"
+          mkdir -p "$MYCOPUNK_DIR/BepInEx/plugins" "$MYCOPUNK_DIR/BepInEx/config"
+          # Force-flush every log line to disk so we don't lose plugin output if
+          # the game is killed before BepInEx's flush timer fires. AppendLog=false
+          # so each run starts fresh. Console.Enabled forwards plugin logs to
+          # the game's stderr, which xvfb-run/proton bubbles back to the workflow.
+          cat > "$MYCOPUNK_DIR/BepInEx/config/BepInEx.cfg" <<'CFG'
+          [Logging.Console]
+          Enabled = true
+
+          [Logging.Disk]
+          WriteUnityLog = true
+          AppendLog = false
+          CFG
 
       - name: Cache gbe_fork steam_api64.dll
         if: steps.gate.outputs.run == 'true'
