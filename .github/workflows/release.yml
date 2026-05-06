@@ -33,6 +33,12 @@ jobs:
       PROTON_VERSION: "GE-Proton9-20"
       BEPINEX_VERSION: "5.4.23.5"
       DEPOTDOWNLOADER_VERSION: "3.4.0"
+      # gbe_fork (maintained Goldberg Steam Emu fork). The drop-in replacement
+      # for steam_api64.dll lets Mycopunk's Steamworks calls succeed without
+      # a real Steam client — otherwise SteamAPI_Init() tries to load
+      # C:\Program Files (x86)\Steam\steamclient64.dll, fails, and the game's
+      # init chain NREs all the way through Global.Instance.
+      GBE_VERSION: "release-2026_04_25"
       STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
       STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
     steps:
@@ -53,7 +59,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xvfb wine64 jq unzip ca-certificates
+            xvfb wine64 jq unzip p7zip-full ca-certificates
 
       - name: Install mise
         uses: jdx/mise-action@v2
@@ -176,6 +182,38 @@ jobs:
           fi
           unzip -o ~/tools/bepinex.zip -d "$MYCOPUNK_DIR"
           mkdir -p "$MYCOPUNK_DIR/BepInEx/plugins"
+
+      - name: Cache gbe_fork steam_api64.dll
+        if: steps.gate.outputs.run == 'true'
+        id: cache-gbe
+        uses: actions/cache@v4
+        with:
+          path: ~/tools/gbe
+          key: gbe-${{ env.GBE_VERSION }}
+
+      - name: Install gbe_fork steam_api64.dll into game dir
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if [ ! -f ~/tools/gbe/steam_api64.dll ]; then
+            mkdir -p ~/tools/gbe /tmp/gbe-extract
+            curl -fL -o /tmp/gbe.7z \
+              "https://github.com/Detanup01/gbe_fork/releases/download/${GBE_VERSION}/emu-win-release.7z"
+            7z x -y /tmp/gbe.7z -o/tmp/gbe-extract release/regular/x64/steam_api64.dll
+            cp /tmp/gbe-extract/release/regular/x64/steam_api64.dll ~/tools/gbe/steam_api64.dll
+          fi
+          # Replace every steam_api64.dll under the game dir. Unity ships its
+          # native plugins in Mycopunk_Data/Plugins/x86_64/ but some games also
+          # drop a copy next to the .exe — replace whatever's there.
+          replaced=0
+          while IFS= read -r -d '' f; do
+            cp ~/tools/gbe/steam_api64.dll "$f"
+            echo "Replaced: $f"
+            replaced=$((replaced + 1))
+          done < <(find "$MYCOPUNK_DIR" -name "steam_api64.dll" -print0)
+          if [ "$replaced" -eq 0 ]; then
+            echo "WARNING: no steam_api64.dll found in $MYCOPUNK_DIR — placing one next to Mycopunk.exe as a fallback" >&2
+            cp ~/tools/gbe/steam_api64.dll "$MYCOPUNK_DIR/steam_api64.dll"
+          fi
 
       - name: Run release pipeline
         if: steps.gate.outputs.run == 'true'
