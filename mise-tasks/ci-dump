@@ -34,6 +34,7 @@ mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
 # MYCOPUNK_DIR/unity.log.
 xvfb-run --auto-servernum --server-args="-screen 0 1024x768x24 +extension RANDR" -- env \
     WINEDLLOVERRIDES="winhttp.dll=n,b" \
+    PROTON_XALIA=0 \
     "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" \
     -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!
