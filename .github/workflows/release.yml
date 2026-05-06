@@ -59,7 +59,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xvfb wine64 jq unzip p7zip-full ca-certificates
+            xvfb wine64 jq unzip p7zip-full ca-certificates \
+            libnss3 libsdl2-2.0-0 libudev1 libxi6 libxinerama1 libxcursor1 \
+            libxrandr2 libxext6 libxrender1 libgbm1 libasound2 libpulse0
 
       - name: Install mise
         uses: jdx/mise-action@v2

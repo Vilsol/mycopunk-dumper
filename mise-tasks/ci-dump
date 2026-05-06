@@ -25,12 +25,15 @@ export STEAM_COMPAT_DATA_PATH="${STEAM_COMPAT_DATA_PATH:-$MYCOPUNK_DIR/_proton_p
 export STEAM_COMPAT_CLIENT_INSTALL_PATH="${STEAM_COMPAT_CLIENT_INSTALL_PATH:-$HOME/.steam/steam}"
 mkdir -p "$STEAM_COMPAT_DATA_PATH" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"
 
-# xvfb-run is a safety net: -batchmode -nographics should make Unity skip
-# rendering, but Wine occasionally pokes at X11 anyway and crashes without
-# a display. -logFile redirects Unity's Player.log out of the Proton prefix
-# (where we'd never see it) into MYCOPUNK_DIR.
-xvfb-run -a -- env \
-    WINEDLLOVERRIDES="winhttp.dll=n,b" \
+# Run truly headless: no DISPLAY, no xvfb. Unity 6's InputSystem .cctor
+# fails when it sees a virtual display with no input devices (xvfb's case),
+# which cascades into our plugin's AddComponent throwing TypeLoadException.
+# With DISPLAY unset, -batchmode -nographics actually means "no input/graphics
+# subsystem" and InputSystem's static init skips device enumeration cleanly.
+# -logFile redirects Unity's Player.log out of the Proton prefix into
+# MYCOPUNK_DIR/unity.log.
+unset DISPLAY
+env WINEDLLOVERRIDES="winhttp.dll=n,b" \
     "$PROTON_DIR/proton" run "$MYCOPUNK_DIR/Mycopunk.exe" \
     -batchmode -nographics -logFile "Z:$UNITY_LOG" &
 GAME_PID=$!
