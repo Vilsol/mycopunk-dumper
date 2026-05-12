@@ -9,10 +9,6 @@ on:
         description: "Run the pipeline even if the Steam buildid is unchanged"
         type: boolean
         default: false
-      skip_assets:
-        description: "Skip AssetRipper extraction (~15min)"
-        type: boolean
-        default: true
 
 concurrency:
   group: release
@@ -302,7 +298,8 @@ jobs:
         env:
           DUMP_TASK: ci-dump
           STEAM_MANIFEST_ID: ${{ steps.manifest.outputs.current }}
-          SKIP_ASSETS: ${{ inputs.skip_assets && '1' || '0' }}
+          # AssetRipper is a local-only step; CI never has it installed.
+          SKIP_ASSETS: "1"
           PROTON_DIR: ${{ runner.temp }}/proton
           # UMU_RUN is exported into GITHUB_ENV by the "Install umu-launcher" step
         run: |
