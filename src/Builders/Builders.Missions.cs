@@ -87,7 +87,42 @@ partial class Plugin
         var rr = GetPrivateField<LevelUnlockList>(m, "RepeatRewards").Properties;
         if (rr != null) e.RepeatRewards = rr.Where(x => x != null).Select(BuildLevelUnlock).ToArray();
 
+        if (t.Name == "IncursionMission") e.Incursion = BuildIncursion();
+
         return e;
+    }
+
+    /// <summary>
+    /// IncursionMission stashes its floor-reward scaling in <c>private static</c> fields that
+    /// JsonUtility skips, so we read them reflectively. The table is shared by all incursion
+    /// missions (there's only one), so it takes no instance argument.
+    /// </summary>
+    private static MissionEntry.IncursionData BuildIncursion()
+    {
+        var data = new MissionEntry.IncursionData
+        {
+            // Per IncursionMission.GiveFloorRewards: +1 antimass every other floor past the table.
+            AntimassPerExtraFloor = 1,
+            ExtraFloorInterval = 2
+        };
+
+        var byFloor = typeof(IncursionMission).GetField("antimassByFloor",
+            BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null) as System.Collections.IEnumerable;
+        if (byFloor != null)
+        {
+            var list = new List<MissionEntry.AntimassFloorReward>();
+            foreach (var o in byFloor)
+            {
+                var vt = (System.ValueTuple<int, int, int>)o;
+                list.Add(new MissionEntry.AntimassFloorReward { Floor = vt.Item1, Antimass = vt.Item2, RepeatAntimass = vt.Item3 });
+            }
+            data.AntimassByFloor = list.ToArray();
+        }
+
+        data.FungalFloorThresholds = typeof(IncursionRoom).GetField("fungalFloorThresholds",
+            BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null) as int[];
+
+        return data;
     }
 
     private static ObjectiveEntry BuildObjective(ObjectiveBase o, string name)

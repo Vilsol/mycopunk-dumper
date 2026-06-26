@@ -43,6 +43,8 @@ public partial class Plugin : BaseUnityPlugin
     private static Crafting CraftingEntry;
     private static DialogueData DialogueEntry;
     private static readonly SortedDictionary<string, UpgradePresetEntry> UpgradePresetMap = new();
+    private static readonly SortedDictionary<string, GridProfileEntry> GridProfileMap = new();
+    private static readonly SortedDictionary<string, PlanetEntry> PlanetMap = new();
 
     internal static BepInEx.Logging.ManualLogSource Log;
 
@@ -91,6 +93,8 @@ public partial class Plugin : BaseUnityPlugin
         CraftingEntry = null;
         DialogueEntry = null;
         UpgradePresetMap.Clear();
+        GridProfileMap.Clear();
+        PlanetMap.Clear();
         NativeConverter.InstanceRefs.Clear();
 
         if (Global.Instance == null)
@@ -410,6 +414,26 @@ public partial class Plugin : BaseUnityPlugin
                 RawData = up
             };
         }
+        // GridProfile — per-player-level upgrade-grid size curves.
+        foreach (var gp in UnityEngine.Resources.FindObjectsOfTypeAll<GridProfile>())
+        {
+            if (gp == null || string.IsNullOrEmpty(gp.name) || GridProfileMap.ContainsKey(gp.name)) continue;
+            var sizes = gp.GetGridSizes();
+            GridProfileMap[gp.name] = new GridProfileEntry
+            {
+                GridSizes = (sizes ?? Array.Empty<GridProfile.GridSize>())
+                    .Select(s => new GridProfileEntry.GridSizeEntry { Level = s.level, Width = s.width, Height = s.height })
+                    .ToArray()
+            };
+        }
+
+        // Planet — biome composition arrays.
+        foreach (var pl in UnityEngine.Resources.FindObjectsOfTypeAll<Planet>())
+        {
+            if (pl == null || string.IsNullOrEmpty(pl.name) || PlanetMap.ContainsKey(pl.name)) continue;
+            PlanetMap[pl.name] = new PlanetEntry { BiomeData = pl.PlanetBiomeData };
+        }
+
         // Dialogue catalog + per-trigger probabilities.
         BuildDialogue();
 
@@ -568,6 +592,21 @@ public partial class Plugin : BaseUnityPlugin
             crafting = CraftingEntry,
             dialogue = DialogueEntry,
             upgradePresets = UpgradePresetMap,
+            levelMilestones = BuildLevelMilestones(),
+            patternInfusion = new PatternInfusion
+            {
+                UnlockLevel = 13,
+                ResourceID = "antimass",
+                BaseCost = 10,
+                CostPerCellDifference = 5,
+                MinCost = 1,
+                CostPerRarityLevel = 2,
+                CostFormula = "max(BaseCost + cellCountDifference * CostPerCellDifference, MinCost) + targetRarity * CostPerRarityLevel"
+            },
+            directiveManager = UnityEngine.Resources.FindObjectsOfTypeAll<DirectiveManager>()
+                .Where(d => d != null).Select(BuildDirectiveManager).FirstOrDefault(),
+            gridProfiles = GridProfileMap,
+            planets = PlanetMap,
             statusEffectGlobals = new StatusEffectGlobals(),
             formulas = new Formulas
             {

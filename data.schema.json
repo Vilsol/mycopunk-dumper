@@ -185,10 +185,138 @@
       "type": "object",
       "description": "Named bundles of `UpgradeProperty` overrides referenced by `SkinUpgradeProperty_Preset.preset` (e.g. \"Coppertone\", \"Bloodmetal\", \"Glittering\"). Each preset's `Modifiers` mirrors `Skin.Modifiers` so a consumer can answer \"what does Glittering do?\" without parsing `RawData`. Catalog source: `Resources.FindObjectsOfTypeAll<UpgradePreset>()`. Keyed by SO asset name.",
       "additionalProperties": { "$ref": "#/$defs/UpgradePresetEntry" }
+    },
+    "levelMilestones": {
+      "type": "array",
+      "description": "Player-level milestone chain shown when you click your player level in the inventory screen. Ordered by `Level`. Built by walking `LevelMilestones.FirstMilestone()` (constructed in code, not a ScriptableObject).",
+      "items": { "$ref": "#/$defs/LevelMilestoneEntry" }
+    },
+    "patternInfusion": {
+      "$ref": "#/$defs/PatternInfusion",
+      "description": "Pattern Infuser (HUB) cost formula — spend Antimass Substrate to infuse one upgrade's pattern into another. Hardcoded constants transcribed from `PatternInfuserWindow`."
+    },
+    "directiveManager": {
+      "$ref": "#/$defs/DirectiveManagerEntry",
+      "description": "The `DirectiveManager` ScriptableObject — per-tier reward multipliers and tiered reward pools above the individual `directives`."
+    },
+    "gridProfiles": {
+      "type": "object",
+      "description": "Per-player-level upgrade-grid size curves. Catalog source: `Resources.FindObjectsOfTypeAll<GridProfile>()`. Keyed by SO asset name (e.g. \"DefaultGridProfile\", \"HeavyGridProfile\").",
+      "additionalProperties": { "$ref": "#/$defs/GridProfileEntry" }
+    },
+    "planets": {
+      "type": "object",
+      "description": "Planet biome-composition arrays. Catalog source: `Resources.FindObjectsOfTypeAll<Planet>()`. Keyed by SO asset name (e.g. \"New Atlas\").",
+      "additionalProperties": { "$ref": "#/$defs/PlanetEntry" }
     }
   },
 
   "$defs": {
+    "IncursionData": {
+      "type": "object",
+      "description": "IncursionMission-only floor-reward scaling, read from private static fields.",
+      "properties": {
+        "AntimassByFloor": {
+          "type": "array",
+          "description": "Antimass Substrate granted the first time you reach each listed floor. Source: IncursionMission.antimassByFloor.",
+          "items": { "$ref": "#/$defs/AntimassFloorReward" }
+        },
+        "AntimassPerExtraFloor": { "type": "integer", "description": "Antimass granted per extra-floor interval past the last table floor." },
+        "ExtraFloorInterval": { "type": "integer", "description": "Floor interval at which AntimassPerExtraFloor is granted past the table (e.g. 2 = every other floor)." },
+        "FungalFloorThresholds": {
+          "type": "array",
+          "description": "Floor counts at which fungal-infestation layers escalate. Source: IncursionRoom.fungalFloorThresholds.",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+    "AntimassFloorReward": {
+      "type": "object",
+      "properties": {
+        "Floor": { "type": "integer" },
+        "Antimass": { "type": "integer", "description": "First-time Antimass reward at this floor." },
+        "RepeatAntimass": { "type": "integer", "description": "Reduced reward if you already reached this floor this week." }
+      }
+    },
+    "LevelMilestoneEntry": {
+      "type": "object",
+      "description": "Rewards/unlocks granted at a given player level, shown when clicking your player level.",
+      "properties": {
+        "Level": { "type": "integer" },
+        "Items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Label": { "type": "string", "description": "Already-localized milestone label (HoverInfo.Item.Name)." },
+              "Icon": { "type": "string", "description": "Icon texture name, when present." }
+            }
+          }
+        }
+      }
+    },
+    "PatternInfusion": {
+      "type": "object",
+      "description": "Pattern Infuser cost formula (hardcoded constants from PatternInfuserWindow).",
+      "properties": {
+        "UnlockLevel": { "type": "integer", "description": "Player level that unlocks the Infuser (13)." },
+        "ResourceID": { "type": "string", "description": "Resource spent (\"antimass\")." },
+        "BaseCost": { "type": "integer" },
+        "CostPerCellDifference": { "type": "integer", "description": "Added per cell-count difference between the two upgrades." },
+        "MinCost": { "type": "integer", "description": "Floor on the cell-difference term." },
+        "CostPerRarityLevel": { "type": "integer", "description": "Added per rarity tier of the target upgrade (Standard=0..Contraband=5)." },
+        "CostFormula": { "type": "string", "description": "Human-readable formula summary." }
+      }
+    },
+    "DirectiveManagerEntry": {
+      "type": "object",
+      "description": "DirectiveManager SO — per-tier reward multipliers and tiered reward pools.",
+      "properties": {
+        "TierCount": { "type": "integer" },
+        "PageRewardInterval": { "type": "integer" },
+        "KillsMultiplier": { "type": "array", "description": "Per-tier (index 0..3) kill-progress multiplier.", "items": { "type": "number" } },
+        "HeavyKillsMultiplier": { "type": "array", "items": { "type": "number" } },
+        "MissionsMultiplier": { "type": "array", "items": { "type": "number" } },
+        "TierRewards": {
+          "type": "array",
+          "description": "Reward pool per tier (index 0..3); each is a list of LevelUnlockEntry.",
+          "items": { "type": "array", "items": { "$ref": "#/$defs/LevelUnlockEntry" } }
+        },
+        "Page10Rewards": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        }
+      }
+    },
+    "GridProfileEntry": {
+      "type": "object",
+      "description": "A per-player-level upgrade-grid size curve (GridProfile SO).",
+      "properties": {
+        "GridSizes": {
+          "type": "array",
+          "description": "At each listed Level the grid becomes Width×Height cells.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Level": { "type": "integer" },
+              "Width": { "type": "integer" },
+              "Height": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "PlanetEntry": {
+      "type": "object",
+      "description": "A Planet SO's biome composition.",
+      "properties": {
+        "BiomeData": {
+          "type": "array",
+          "description": "Raw planetBiomeData int array used by the world generator.",
+          "items": { "type": "integer" }
+        }
+      }
+    },
     "Upgrade": {
       "type": "object",
       "description": "A single upgrade definition (a hex-grid module that modifies gear or characters).",
@@ -718,7 +846,11 @@
             "LevelUnlock_Gear",
             "LevelUnlock_IntroUpgrade",
             "LevelUnlock_Preview",
-            "LevelUnlock_RarityReward"
+            "LevelUnlock_RarityReward",
+            "LevelUnlock_Antimass",
+            "LevelUnlock_CorpContest",
+            "LevelUnlock_Event",
+            "LevelUnlock_GearLevel"
           ]
         },
         "Level": { "type": "integer", "description": "Gear/directive level at which this reward is granted. For mission and directive rewards, often 0 (chance-based)." },
@@ -737,7 +869,7 @@
         "Rarity": {
           "type": "string",
           "description": "Set on LevelUnlock_UpgradeRarity, LevelUnlock_SkinRarity, and LevelUnlock_RarityReward. Rarity tier of the upgrade/skin/reward granted. \"None\" appears for unspecified.",
-          "enum": ["Standard", "Rare", "Epic", "Exotic", "None"]
+          "enum": ["Standard", "Rare", "Epic", "Exotic", "Oddity", "Contraband", "None"]
         },
         "XP": { "type": "integer", "description": "Set on LevelUnlock_XP. Amount of player XP granted." },
         "Upgrade": { "type": "string", "description": "Upgrade key. Set on LevelUnlock_Upgrade (specific upgrade reward) and LevelUnlock_SeededSkin (specific SkinUpgrade)." },
@@ -836,7 +968,7 @@
         "Rarity": {
           "type": "string",
           "description": "Rarity tier.",
-          "enum": ["Standard", "Rare", "Epic", "Exotic"]
+          "enum": ["Standard", "Rare", "Epic", "Exotic", "Oddity", "Contraband"]
         },
         "Visibility": { "type": "string", "description": "UI visibility policy from PlayerResource+VisibilityOptions (e.g. AlwaysShow)." },
         "IsAmountAffectedByDifficulty": { "type": "boolean" },
@@ -967,6 +1099,10 @@
           "type": "array",
           "description": "Rewards granted on repeat completions (LevelUnlockEntry list).",
           "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "Incursion": {
+          "$ref": "#/$defs/IncursionData",
+          "description": "Present only on the IncursionMission entry. Floor-reward scaling and fungal thresholds that live in private static fields JsonUtility can't reach (so they're absent from RawData)."
         },
         "RawData": {
           "type": "object",
@@ -1211,7 +1347,7 @@
         "ID": { "type": "string", "examples": ["auth_bruiser"] },
         "Name": { "type": "string", "examples": ["2FA Code: Bruiser"] },
         "Color": { "type": "string" },
-        "Rarity": { "type": "string", "enum": ["Standard", "Rare", "Epic", "Exotic"] },
+        "Rarity": { "type": "string", "enum": ["Standard", "Rare", "Epic", "Exotic", "Oddity", "Contraband"] },
         "Character": { "type": "string", "description": "Character APIName (matches `characters` map key)." },
         "Upgrade": { "type": "string", "description": "Upgrade key (matches `upgrades` map key)." }
       }

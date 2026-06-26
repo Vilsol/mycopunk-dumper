@@ -56,7 +56,7 @@ internal static partial class SkinRenderer
                 ctx.spawnedCrabs.Clear();
 
                 var owner = Pigeon.Movement.Player.LocalPlayer;
-                var skinMaterials = new List<Material>();
+                var skinMaterials = new List<SkinOverrideMaterial>();
                 try { skin.Apply(ctx.instUpgradable, seed, owner, skinMaterials); }
                 catch (Exception ex) { Plugin.Log.LogWarning($"  skin.Apply threw: {ex.Message}"); }
                 ManuallySpawnCrabProps(skin, ctx.instance, seed, ctx.spawnedCrabs);
@@ -91,7 +91,7 @@ internal static partial class SkinRenderer
             {
                 for (int i = 0; i < ctx.lastSkinMaterials.Count; i++)
                 {
-                    var mat = ctx.lastSkinMaterials[i];
+                    var mat = ctx.lastSkinMaterials[i].Material;
                     if (mat != null) mat.SetFloat(SkinUpgrade._HueShift, hueValue);
                 }
             }

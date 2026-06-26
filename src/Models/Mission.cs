@@ -46,6 +46,32 @@ public class MissionEntry
     public Gear.LevelUnlockEntry[] RepeatRewards;
 
     /// <summary>
+    /// IncursionMission-only data that lives in <c>private static</c> tables, which
+    /// JsonUtility (and therefore <c>RawData</c>) cannot reach. Null for every other mission.
+    /// </summary>
+    public IncursionData Incursion;
+
+    public class IncursionData
+    {
+        /// <summary>Antimass Substrate granted the first time you reach each floor (and the reduced
+        /// repeat amount if you already hit that floor this week). Source: IncursionMission.antimassByFloor.</summary>
+        public AntimassFloorReward[] AntimassByFloor;
+        /// <summary>Past the last table floor, you gain <c>AntimassPerExtraFloor</c> every
+        /// <c>ExtraFloorInterval</c> floors. Source: IncursionMission.GiveFloorRewards.</summary>
+        public int AntimassPerExtraFloor;
+        public int ExtraFloorInterval;
+        /// <summary>Floor counts at which the fungal-infestation layers escalate. Source: IncursionRoom.fungalFloorThresholds.</summary>
+        public int[] FungalFloorThresholds;
+    }
+
+    public class AntimassFloorReward
+    {
+        public int Floor;
+        public int Antimass;
+        public int RepeatAntimass;
+    }
+
+    /// <summary>
     /// Full Mission ScriptableObject serialized via Unity's JsonUtility — captures every
     /// subclass-specific [SerializeField] field (e.g. AmalgamationMission.region/scene/globalEvent,
     /// CleanupDetailMission.cleanupDetailObjective/trailCount/bossObjective, etc.) plus all base

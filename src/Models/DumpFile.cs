@@ -42,6 +42,12 @@ public class DumpFile
     public Crafting crafting;                                          // singleton — master crafting price table
     public DialogueData dialogue;                                      // dialogue exchanges + per-trigger probabilities
     public SortedDictionary<string, UpgradePresetEntry> upgradePresets; // named visual-modifier presets referenced by SkinUpgradeProperty_Preset
+
+    public LevelMilestoneEntry[] levelMilestones;                      // per-player-level unlock chain (LevelMilestones)
+    public PatternInfusion patternInfusion;                            // Pattern Infuser cost formula (hardcoded constants)
+    public DirectiveManagerEntry directiveManager;                    // directive tier multipliers + tiered reward pools
+    public SortedDictionary<string, GridProfileEntry> gridProfiles;    // per-level upgrade-grid size curves
+    public SortedDictionary<string, PlanetEntry> planets;             // planet biome-composition arrays
 }
 
 /// <summary>

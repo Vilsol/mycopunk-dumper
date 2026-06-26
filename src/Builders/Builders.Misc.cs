@@ -10,6 +10,67 @@ namespace MycopunkDumper;
 
 partial class Plugin
 {
+    /// <summary>
+    /// Walk the player-level milestone chain. The chain is built in code inside
+    /// <c>LevelMilestones.Initialize()</c> (via <c>FirstMilestone()</c>), so we need any
+    /// instance of the prefab to trigger and read it. Returns null if no instance is found.
+    /// </summary>
+    private static LevelMilestoneEntry[] BuildLevelMilestones()
+    {
+        var lm = UnityEngine.Resources.FindObjectsOfTypeAll<LevelMilestones>().FirstOrDefault();
+        if (lm == null) return null;
+        try
+        {
+            var list = new List<LevelMilestoneEntry>();
+            for (var ms = lm.FirstMilestone(); ms != null; ms = ms.Next)
+            {
+                var items = (ms.Items ?? Array.Empty<Pigeon.HoverInfo.Item>())
+                    .Select(it => new LevelMilestoneEntry.LevelMilestoneItem
+                    {
+                        Label = it.Name,
+                        Icon = it.Icon != null ? it.Icon.texture?.name : null
+                    }).ToArray();
+                list.Add(new LevelMilestoneEntry { Level = ms.Level, Items = items });
+            }
+            return list.ToArray();
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning($"LevelMilestones walk failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static DirectiveManagerEntry BuildDirectiveManager(DirectiveManager dm)
+    {
+        float[] Tiers(object mod) => new[]
+        {
+            GetPrivateField<float>(mod, "tier1"),
+            GetPrivateField<float>(mod, "tier2"),
+            GetPrivateField<float>(mod, "tier3"),
+            GetPrivateField<float>(mod, "tier4")
+        };
+        Gear.LevelUnlockEntry[] Rewards(LevelUnlockList l) =>
+            l.Properties?.Where(x => x != null).Select(BuildLevelUnlock).ToArray();
+
+        return new DirectiveManagerEntry
+        {
+            TierCount = DirectiveManager.TierCount,
+            PageRewardInterval = DirectiveManager.PageRewardInterval,
+            KillsMultiplier = Tiers(dm.KillsMultiplier),
+            HeavyKillsMultiplier = Tiers(dm.HeavyKillsMultiplier),
+            MissionsMultiplier = Tiers(dm.MissionsMultiplier),
+            TierRewards = new[]
+            {
+                Rewards(dm.GetTierRewards(0)),
+                Rewards(dm.GetTierRewards(1)),
+                Rewards(dm.GetTierRewards(2)),
+                Rewards(dm.GetTierRewards(3))
+            },
+            Page10Rewards = Rewards(dm.Page10Rewards)
+        };
+    }
+
     private static CollectableEntry BuildCollectable(CollectableProfile cp)
     {
         var entry = new CollectableEntry

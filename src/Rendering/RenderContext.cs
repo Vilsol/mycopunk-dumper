@@ -69,7 +69,7 @@ internal static partial class SkinRenderer
             public int forcedSegmentIdx;
             // Materials that the skin's Apply produced; we set _HueShift on these
             // each frame so the cycle hue without mutating the gear's shared assets.
-            public List<Material> lastSkinMaterials;
+            public List<SkinOverrideMaterial> lastSkinMaterials;
             // Camera transform pinned per skin so the menu's per-frame camera
             // animation can't drift our framing.
             public Vector3 camPos;
