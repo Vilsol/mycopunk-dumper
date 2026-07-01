@@ -70,7 +70,13 @@ mise exec bun -- bun x ajv-cli@latest validate \
     -d "$DUMP"
 
 step "6/7  Release $VERSION into $DATA_REPO"
-mise run release-dump "$DATA_REPO"
+# FORCE_RELEASE=true (the workflow_dispatch "force" input) overwrites an
+# already-published version instead of bailing.
+if [ "${FORCE_RELEASE:-}" = "true" ]; then
+    mise run release-dump "$DATA_REPO" --force
+else
+    mise run release-dump "$DATA_REPO"
+fi
 
 if [ "$SKIP_ASSETS" = "1" ]; then
     step "7/7  Skipped asset extraction (SKIP_ASSETS=1)"

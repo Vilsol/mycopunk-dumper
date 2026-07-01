@@ -291,6 +291,9 @@ jobs:
         env:
           DUMP_TASK: ci-dump
           STEAM_MANIFEST_ID: ${{ steps.manifest.outputs.current }}
+          # force=true means re-run despite an unchanged buildid; also overwrite
+          # an already-published version instead of bailing.
+          FORCE_RELEASE: ${{ inputs.force }}
           # AssetRipper is a local-only step; CI never has it installed.
           SKIP_ASSETS: "1"
           PROTON_DIR: ${{ runner.temp }}/proton
