@@ -132,13 +132,6 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Cache game depot
-        if: steps.gate.outputs.run == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.MYCOPUNK_DIR }}
-          key: mycopunk-depot-${{ steps.manifest.outputs.current }}
-
       - name: Download game depot
         if: steps.gate.outputs.run == 'true'
         run: |
