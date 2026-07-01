@@ -560,11 +560,22 @@ partial class Plugin
                         if (!string.IsNullOrEmpty(name)) upgradeOut.Properties[i].StatNames.Add(name);
                     }
 
+                    // Numeric rolls already carry an exhaustive min/max range in StatData; sampling
+                    // them across seeds only yields a non-exhaustive subset of that range, so exclude
+                    // those names. What remains are genuinely categorical rolls (e.g. random element)
+                    // that have no min/max and can only be discovered by sampling.
+                    var numericNames = new HashSet<string>();
+                    foreach (var sd in collected)
+                    {
+                        if (sd.minValue != null && sd.maxValue != null) numericNames.Add(sd.name);
+                    }
+
                     // Record only stats with >1 observed distinct value — i.e. genuinely categorical rolls.
                     SortedDictionary<string, string[]> nonDet = null;
                     foreach (var (name, values) in rolledValues)
                     {
                         if (values.Count <= 1) continue;
+                        if (numericNames.Contains(name)) continue;
                         nonDet ??= new SortedDictionary<string, string[]>();
                         nonDet[name] = values.ToArray();
                     }

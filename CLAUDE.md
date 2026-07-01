@@ -48,7 +48,7 @@ There are no tests, no lint config, and no CI.
 
 ## Architecture
 
-Single-purpose plugin. All compiled source lives under `src/`; repo-root holds tooling (`mise.toml`, `mise-tasks/`, `tools/`, `scripts/`), generated artifacts (`data.json`, `property-labels.json`, `decompiled/` — all gitignored), and consumer-facing schema (`data.schema.json`, `SCHEMA_CHANGES.md`).
+Single-purpose plugin. All compiled source lives under `src/`; repo-root holds tooling (`mise.toml`, `mise-tasks/`, `tools/`, `scripts/`), generated artifacts (`data.json`, `property-labels.json`, `decompiled/` — all gitignored), and consumer-facing schema (`data.schema.json`).
 
 ```
 src/
@@ -69,7 +69,7 @@ The `Plugin` class is `partial`. Every `Build<X>` and helper lives in `src/Build
 - **`src/Builders/Builders.Common.cs`** — shared helpers: `GetPrivateField` (walks the type hierarchy), `BuildIcon`, `LocText`, `UpgradeKey`, `PrettifyPropertyType`, `StripRichText`, `InjectPlainTextSiblings`, etc. Every other Builders.* file relies on these.
 - **`src/Builders/Builders.Skins.cs`** — the heaviest partial: `ProcessUpgrades`, `BuildSkin`/`BuildSkinModifier`, `PopulateSkinPreviews`, the chance-gated-modifier filter shared with `SkinRenderer`.
 - **`src/Models/*.cs`** — DTOs mirroring each game catalog (one per file, name == primary type). Game enums are flattened to strings.
-- **`src/Models/DumpFile.cs`** — Top-level wrapper covering ~30 sections (`upgrades`, `gears`, `characters`, `resources`, `directives`, `missions`, `enemies`, …). See `SCHEMA_CHANGES.md` for full per-entry shapes.
+- **`src/Models/DumpFile.cs`** — Top-level wrapper covering ~30 sections (`upgrades`, `gears`, `characters`, `resources`, `directives`, `missions`, `enemies`, …). See `data.schema.json` for full per-entry shapes.
 - **`src/Serialization/NativeConverter.cs`** — Newtonsoft `JsonConverter` for Unity-native types (`HexMap`, `UpgradeProperty`, `DirectiveProperty`). Delegates to `JsonUtility.ToJson` and writes the result as raw JSON; read is not implemented (dump-only).
 
 - **`src/Probe.cs`** — runtime introspection helper. Triggered by `$MYCOPUNK_DIR/probe.flag` (or `mise run probe`). Writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, subclasses.txt, unlock-directives.txt, samples/}` for exploration before adding new dumpers. Add new probe targets by editing `Probe.Run()` — the helpers (`DumpType<T>`, `DiscoverSubclasses<T>`, `SampleScriptableObjects<T>`) handle reflection and output formatting. **Workflow**: run `mise run probe`, read `subclasses.txt` for polymorphic types, design DTO, add builder, repeat.
