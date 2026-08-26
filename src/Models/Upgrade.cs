@@ -24,6 +24,7 @@ public class Upgrade {
     [Newtonsoft.Json.JsonConverter(typeof(NativeConverter))]
     public HexMap Pattern;
     public DIcon Icon;
+    public DTitle Title;              // player title this upgrade contributes; null when it grants none
     public DProperty[] Properties;
     public DUnlockCost[] UnlockCost;
     public DUnlockCost[] AdditionalUnlockCost;
@@ -40,6 +41,19 @@ public class Upgrade {
     public class DIcon {
         public float[] Rect;
         public string Texture;
+    }
+
+    /// <summary>
+    /// <c>Upgrade.Title</c> (<c>TitleID</c>). Equipped upgrades contribute a title fragment each;
+    /// the game composes the player's displayed title from the highest-<see cref="Priority"/> ones.
+    /// The localization key carries two blocks: an adjective at 0 and a noun at 1
+    /// (e.g. <c>t_frost</c> -> "Frosted" / "Glacier").
+    /// </summary>
+    public class DTitle {
+        public string NameID;         // localization key (e.g. "t_frost")
+        public string Adjective;      // block 0
+        public string Noun;           // block 1
+        public int Priority;          // higher wins when several equipped upgrades grant titles
     }
 
     public class DProperty {
@@ -83,6 +97,8 @@ public class Upgrade {
         public bool ColorIcon;                   // whether the icon is tinted by the skin color at render time
         public bool ChangeHueIfNoModifiersApplied;
         public bool OverridesPattern;            // true if SkinUpgrade.overridePattern is set (skin tree uses a non-default HexMapProfile)
+        public string SkinType;                  // cosmetic slot: "Skin" | "Crab" | "Flair" | "Coat" | "None"
+        public string SkinTypeName;              // localized slot label; note the game shows "Hat" instead of "Crab" when the gear is a Character
         public bool HasVfx;                      // any VFX-spawning property (VFXCrab, VFXCustomProp, VFXMod, GunCrab, GunCrab_List)
         public bool HasCrab;                     // any GunCrab-derived property (gun has a crab/eye/pump/roach companion)
         public bool HasCharacterModel;           // any CharacterModel property (replaces first/third-person mesh)

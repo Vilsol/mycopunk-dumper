@@ -170,4 +170,92 @@ partial class Plugin
             Icon = BuildIcon(icon)
         };
     }
+
+    // Mirrors Fulfillment.GetCategoryName. Going through LocText rather than the game's
+    // helper keeps unresolved keys as null instead of echoing the key back as display text
+    // ("career" has no CSV entry in this build).
+    private static string FulfillmentCategoryKey(Fulfillment.Category category) => category switch
+    {
+        Fulfillment.Category.Career => "career",
+        Fulfillment.Category.Mission => "mission",
+        Fulfillment.Category.HUB => "hub",
+        Fulfillment.Category.Gear => "gear",
+        _ => null,
+    };
+
+    private static FulfillmentEntry BuildFulfillment(Fulfillment f)
+    {
+        var overrideDesc = GetPrivateField<string>(f, "overrideDescription");
+        var category = f.FulfillmentCategory;
+        var entry = new FulfillmentEntry
+        {
+            ID = f.ID,
+            Subclass = f.GetType().Name,
+            DescriptionID = string.IsNullOrEmpty(overrideDesc) ? f.ID : overrideDesc,
+            Category = category.ToString(),
+            CategoryName = LocText(FulfillmentCategoryKey(category), 0),
+            PlatformAchievementID = GetPrivateField<string>(f, "platformAchievementID"),
+            IsHidden = f.IsHidden,
+            Score = f.Score,
+            CompletionThreshold = GetPrivateField<int>(f, "completionThreshold"),
+            UseThresholdAsDescParam = GetPrivateField<bool>(f, "useThresholdAsDescParam"),
+        };
+
+        // Several subclasses resolve their description through PlayerData, which isn't
+        // populated in a headless dump. TextBlocks also echoes the key back for missing
+        // entries, and this build ships no fulfillment strings at all — treat both as "no text".
+        try
+        {
+            var desc = f.GetDescription();
+            if (!string.IsNullOrEmpty(desc) && desc != entry.DescriptionID) entry.Description = desc;
+        }
+        catch { entry.Description = LocText(entry.DescriptionID, 0); }
+
+        try
+        {
+            var reward = GetPrivateField<LevelUnlockContainer>(f, "reward").LevelUnlock;
+            if (reward != null) entry.Reward = BuildLevelUnlock(reward);
+        }
+        catch (Exception ex) { Log.LogWarning($"Fulfillment reward failed for {f.ID}: {ex.Message}"); }
+        entry.RewardGear = GetPrivateField<GearInfo>(f, "rewardGear")?.APIName;
+
+        switch (f)
+        {
+            case ElementalFulfillment:
+                entry.Element = GetPrivateField<EffectType>(f, "element").ToString();
+                break;
+
+            case FlagFulfillment:
+                entry.FlagName = GetPrivateField<string>(f, "flagName");
+                break;
+
+            case LevelFulfillment:
+                entry.TargetGear = GetPrivateField<GearInfo>(f, "gear")?.APIName;
+                break;
+
+            case MissionFulfillment:
+                entry.Mission = GetPrivateField<Mission>(f, "mission")?.ID;
+                entry.MissionContainer = GetPrivateField<MissionContainer>(f, "container")?.ID;
+                entry.CompletionCount = GetPrivateField<int>(f, "completionCount");
+                break;
+
+            case OuroborosFulfillment:
+                entry.MinThreat = GetPrivateField<int>(f, "minThreat");
+                break;
+
+            case UpgradeFulfillment:
+                entry.DiscoveredOnly = GetPrivateField<bool>(f, "discoveredOnly");
+                entry.DiscoverAll = GetPrivateField<bool>(f, "discoverAll");
+                entry.Rarities = GetPrivateField<RarityFlags>(f, "rarities").ToString();
+                entry.CountUpgrades = GetPrivateField<bool>(f, "countUpgrades");
+                entry.CountSkins = GetPrivateField<bool>(f, "countSkins");
+                break;
+
+            case EncounterFulfillment:
+                entry.Encounter = GetPrivateField<UnityEngine.Object>(f, "encounter")?.name;
+                break;
+        }
+
+        return entry;
+    }
 }

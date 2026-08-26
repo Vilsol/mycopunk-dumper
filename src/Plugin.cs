@@ -45,6 +45,7 @@ public partial class Plugin : BaseUnityPlugin
     private static readonly SortedDictionary<string, UpgradePresetEntry> UpgradePresetMap = new();
     private static readonly SortedDictionary<string, GridProfileEntry> GridProfileMap = new();
     private static readonly SortedDictionary<string, PlanetEntry> PlanetMap = new();
+    private static readonly SortedDictionary<string, FulfillmentEntry> FulfillmentMap = new();
 
     internal static BepInEx.Logging.ManualLogSource Log;
 
@@ -285,6 +286,16 @@ public partial class Plugin : BaseUnityPlugin
             if (string.IsNullOrEmpty(id) || CollectableMap.ContainsKey(id)) continue;
             CollectableMap[id] = BuildCollectable(cp);
             NativeConverter.InstanceRefs[cp.GetInstanceID()] = "collectable:" + id;
+        }
+
+        // Fulfillment — in-game achievements/challenges (conditions + rewards).
+        // Unlike the other catalogs these aren't referenced by anything loaded at Start(),
+        // so FindObjectsOfTypeAll returns nothing — LoadAll pulls them out of Resources.
+        foreach (var f in UnityEngine.Resources.LoadAll<Fulfillment>(""))
+        {
+            if (f == null || string.IsNullOrEmpty(f.ID) || FulfillmentMap.ContainsKey(f.ID)) continue;
+            FulfillmentMap[f.ID] = BuildFulfillment(f);
+            NativeConverter.InstanceRefs[f.GetInstanceID()] = "fulfillment:" + f.ID;
         }
 
         // EnemyClassGroup
@@ -606,6 +617,7 @@ public partial class Plugin : BaseUnityPlugin
             directiveManager = UnityEngine.Resources.FindObjectsOfTypeAll<DirectiveManager>()
                 .Where(d => d != null).Select(BuildDirectiveManager).FirstOrDefault(),
             gridProfiles = GridProfileMap,
+            fulfillments = FulfillmentMap,
             planets = PlanetMap,
             statusEffectGlobals = new StatusEffectGlobals(),
             formulas = new Formulas

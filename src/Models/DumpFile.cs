@@ -48,6 +48,7 @@ public class DumpFile
     public DirectiveManagerEntry directiveManager;                    // directive tier multipliers + tiered reward pools
     public SortedDictionary<string, GridProfileEntry> gridProfiles;    // per-level upgrade-grid size curves
     public SortedDictionary<string, PlanetEntry> planets;             // planet biome-composition arrays
+    public SortedDictionary<string, FulfillmentEntry> fulfillments;   // in-game achievements/challenges: condition, score, reward
 }
 
 /// <summary>

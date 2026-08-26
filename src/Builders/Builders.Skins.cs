@@ -18,6 +18,8 @@ partial class Plugin
             ColorIcon = s.ColorIcon(),
             ChangeHueIfNoModifiersApplied = GetPrivateField<bool>(s, "changeHueIfNoModifiersApplied"),
             OverridesPattern = GetPrivateField<HexMapProfile>(s, "overridePattern") != null,
+            SkinType = s.SkinType.ToString(),
+            SkinTypeName = LocText(SkinTypeKey(s.SkinType), 0),
         };
         var baseSkin = GetPrivateField<global::Upgrade>(s, "baseSkin");
         if (baseSkin != null) skin.BaseSkin = UpgradeKey(baseSkin.ID);
@@ -86,6 +88,16 @@ partial class Plugin
 
         return skin;
     }
+
+    // Mirrors SkinUpgrade.GetSkinTypeName minus its gear check — that branch swaps
+    // "sk_crab" for "hat" on Characters, which is per-gear and not a property of the skin.
+    private static string SkinTypeKey(SkinType type) => type switch
+    {
+        SkinType.Crab => "sk_crab",
+        SkinType.Flair => "sk_flair",
+        SkinType.Coat => "sk_coat",
+        _ => "skin",
+    };
 
     /// <summary>
     /// Resolve a single <c>SkinUpgradeProperty</c> (or any <c>UpgradeProperty</c>) into a
@@ -404,6 +416,19 @@ partial class Plugin
                     IsModded = up.IsModded,
                     ModGUID = up.ModGUID
                 };
+
+                // Title fragment (GearUpgrade / PlayerUpgrade override the base's empty default).
+                var title = up.Title;
+                if (!string.IsNullOrEmpty(title.NameID))
+                {
+                    upgradeOut.Title = new Upgrade.DTitle
+                    {
+                        NameID = title.NameID,
+                        Adjective = LocText(title.NameID, 0),
+                        Noun = LocText(title.NameID, 1),
+                        Priority = title.Priority
+                    };
+                }
 
                 // Turbocharge / Ouroboros costs (per-rarity formulas, computed by the game)
                 try

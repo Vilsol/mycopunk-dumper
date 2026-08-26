@@ -208,6 +208,11 @@
       "type": "object",
       "description": "Planet biome-composition arrays. Catalog source: `Resources.FindObjectsOfTypeAll<Planet>()`. Keyed by SO asset name (e.g. \"New Atlas\").",
       "additionalProperties": { "$ref": "#/$defs/PlanetEntry" }
+    },
+    "fulfillments": {
+      "type": "object",
+      "description": "In-game achievements/challenges. Catalog source: `Resources.LoadAll<Fulfillment>(\"\")` — these are not referenced by anything loaded at startup, so `FindObjectsOfTypeAll` does not see them. Keyed by `Fulfillment.ID` (e.g. \"f_bunker\", \"ff_grid\"). Distinct from `achievements`, which is only the list of Steam achievement API IDs.",
+      "additionalProperties": { "$ref": "#/$defs/FulfillmentEntry" }
     }
   },
 
@@ -288,6 +293,40 @@
         }
       }
     },
+    "FulfillmentEntry": {
+      "type": "object",
+      "description": "One Fulfillment ScriptableObject: an in-game achievement with its own completion condition, score and optional reward. Subclass-specific fields are absent when they do not apply.",
+      "properties": {
+        "ID": { "type": "string", "description": "Canonical ID, also the map key (e.g. \"f_bunker\")." },
+        "Subclass": { "type": "string", "description": "C# class name of the concrete Fulfillment subclass — determines which condition fields below are present." },
+        "Description": { "type": "string", "description": "Resolved description. Absent when the localization key is missing from this build's CSV (TextBlocks echoes the key back for missing entries, which is filtered out here) or when resolving it needs live player data." },
+        "DescriptionID": { "type": "string", "description": "`overrideDescription`, or `ID` when that is empty — the key `GetDescription()` resolves against." },
+        "Category": { "type": "string", "enum": ["Career", "Mission", "HUB", "Gear"], "description": "Fulfillment.Category enum." },
+        "CategoryName": { "type": "string", "description": "Localized category label. Absent for categories whose key is missing from the CSV." },
+        "PlatformAchievementID": { "type": "string", "description": "Steam achievement unlocked alongside this one; empty string for in-game-only entries. Cross-reference with `achievements`." },
+        "IsHidden": { "type": "boolean" },
+        "Score": { "type": "integer", "description": "Points awarded toward the fulfillment score total." },
+        "CompletionThreshold": { "type": "integer", "description": "Target value the subclass condition compares against (kills, floors, level, completions, …)." },
+        "UseThresholdAsDescParam": { "type": "boolean", "description": "Whether `CompletionThreshold` is substituted into the description text." },
+        "Reward": { "$ref": "#/$defs/LevelUnlockEntry", "description": "`reward.LevelUnlock`. No entry in the current build sets one." },
+        "RewardGear": { "type": "string", "description": "GearInfo APIName the reward applies to. Unset in the current build." },
+        "Element": { "type": "string", "description": "ElementalFulfillment — EffectType whose PlayerData counter is checked (Fire/Shock/Acid)." },
+        "FlagName": { "type": "string", "description": "FlagFulfillment — PlayerData flag compared against the threshold." },
+        "TargetGear": { "type": "string", "description": "LevelFulfillment — GearInfo APIName whose level is checked; absent means player level." },
+        "Mission": { "type": "string", "description": "MissionFulfillment — mission ID. Lookup in `missions`." },
+        "MissionContainer": { "type": "string", "description": "MissionFulfillment — container ID. Lookup in `missionContainers`." },
+        "CompletionCount": { "type": "integer", "description": "MissionFulfillment — required completions." },
+        "MinThreat": { "type": "integer", "description": "OuroborosFulfillment — threat floor; 0 means the threshold is a plain room count." },
+        "DiscoveredOnly": { "type": "boolean", "description": "UpgradeFulfillment — count only discovered upgrades." },
+        "DiscoverAll": { "type": "boolean", "description": "UpgradeFulfillment — require every matching upgrade rather than a count." },
+        "Rarities": { "type": "string", "description": "UpgradeFulfillment — RarityFlags the count is filtered to." },
+        "CountUpgrades": { "type": "boolean" },
+        "CountSkins": { "type": "boolean" },
+        "Encounter": { "type": "string", "description": "EncounterFulfillment — encounter object name. Lookup in `encounters`." }
+      },
+      "required": ["ID", "Subclass", "Category"]
+    },
+
     "GridProfileEntry": {
       "type": "object",
       "description": "A per-player-level upgrade-grid size curve (GridProfile SO).",
@@ -366,6 +405,7 @@
         },
         "Pattern": { "$ref": "#/$defs/HexMap" },
         "Icon": { "$ref": "#/$defs/DIcon" },
+        "Title": { "$ref": "#/$defs/DTitle" },
         "Skin": {
           "$ref": "#/$defs/DSkin",
           "description": "Cosmetic-specific data, populated only when `UpgradeType` == `\"Cosmetic\"` (i.e. the upgrade is a `SkinUpgrade`). Aggregates fields scattered across `SkinUpgrade` and its `SkinUpgradeProperty` subclasses."
@@ -552,6 +592,8 @@
         "ColorIcon": { "type": "boolean", "description": "Whether the icon is tinted by the skin color at render time." },
         "ChangeHueIfNoModifiersApplied": { "type": "boolean" },
         "OverridesPattern": { "type": "boolean", "description": "True when `SkinUpgrade.overridePattern` is set — the skin tree uses a non-default `HexMapProfile`. Default is `Global.Instance.SkinPattern`." },
+        "SkinType": { "type": "string", "enum": ["Skin", "Crab", "Flair", "Coat", "None"], "description": "`SkinUpgrade.SkinType` — the cosmetic slot this skin occupies." },
+        "SkinTypeName": { "type": "string", "description": "Localized slot label (`skin` / `sk_crab` / `sk_flair` / `sk_coat`). Note the game substitutes \"Hat\" for the Crab label when the wearer is a Character — that is per-gear, so it is not reflected here." },
         "HasVfx": { "type": "boolean", "description": "Any VFX-spawning property is present (GunCrab-derived, VFXMod, VFXCustomProp). Skins with this flag run a `VisualEffect` that needs manual ticking when `Time.timeScale = 0`." },
         "HasCrab": { "type": "boolean", "description": "Any GunCrab-derived property — the gun gets a crab/eye/pump/roach companion prop spawned next to it." },
         "HasCharacterModel": { "type": "boolean", "description": "Any `SkinUpgradeProperty_CharacterModel` — replaces the player's first/third-person mesh." },
@@ -822,6 +864,18 @@
         "Width": { "type": "integer" },
         "Height": { "type": "integer" }
       }
+    },
+
+    "DTitle": {
+      "type": "object",
+      "description": "`Upgrade.Title` (`TitleID`). Equipped upgrades each contribute a title fragment; the game composes the player's displayed title from the highest-priority ones. Absent on upgrades that grant no title.",
+      "properties": {
+        "NameID": { "type": "string", "description": "Localization key (e.g. \"t_frost\"). Lookup in `localization`." },
+        "Adjective": { "type": "string", "description": "Block 0 of the key (e.g. \"Frosted\")." },
+        "Noun": { "type": "string", "description": "Block 1 of the key (e.g. \"Glacier\"). Absent for the few keys that define only one block." },
+        "Priority": { "type": "integer", "description": "Higher wins when several equipped upgrades grant titles." }
+      },
+      "required": ["NameID", "Priority"]
     },
 
     "LevelUnlockEntry": {
