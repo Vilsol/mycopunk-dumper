@@ -187,7 +187,6 @@ public class Upgrade {
 
         // SkinUpgradeProperty_GunCrab + subclasses
         public string CrabModel;                 // crab GameObject prefab name
-        public string CrabUpgrade;               // SkinUpgradeProperty_GunCrab.myUpgrade ID (UpgradeKey)
         public string[] CrabMeshes;              // SkinUpgradeProperty_GunCrab_List.meshes asset names
 
         // SkinUpgradeProperty_VFXCrab — only override fields that diverge from the base prefab

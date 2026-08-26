@@ -6,7 +6,7 @@ public class MissionEntry
     public string Name;                  // public Name property (often same as MissionName)
     public string MissionName;           // internal _missionName field
     public string TypeName;              // public TypeName property (display)
-    public string MissionTypeName;       // internal _missionTypeName field
+    public string Category;              // MissionCategory enum (replaced _missionTypeName in 1.9)
     public string Description;
     public string Subclass;              // C# class name (AmalgamationMission, SatelliteSalvageMission, …)
 

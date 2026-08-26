@@ -677,7 +677,6 @@
         "InfectionScale": { "type": "number", "description": "SkinUpgradeProperty_Infection." },
 
         "CrabModel": { "type": "string", "description": "SkinUpgradeProperty_GunCrab (and subclasses) — `crab` GameObject prefab asset name." },
-        "CrabUpgrade": { "type": "string", "description": "Upgrade key (`SkinUpgradeProperty_GunCrab.myUpgrade`). Lookup in `upgrades`." },
         "CrabMeshes": {
           "type": "array",
           "description": "SkinUpgradeProperty_GunCrab_List — pool of mesh asset names the crab variant rolls between.",
@@ -837,6 +836,8 @@
             "LevelUnlock_Resource",
             "LevelUnlock_MultipleUpgrades",
             "LevelUnlock_UpgradeRarity",
+            "LevelUnlock_UpgradeBoost",
+            "LevelUnlock_Emote",
             "LevelUnlock_SkinRarity",
             "LevelUnlock_SeededSkin",
             "LevelUnlock_XP",
@@ -1048,7 +1049,7 @@
         "Name": { "type": "string", "description": "Public Name property — usually the localized display name." },
         "MissionName": { "type": "string", "description": "Internal _missionName field — the canonical short ID (e.g. \"sat_salvage\", \"ouroboros\")." },
         "TypeName": { "type": "string", "description": "Public TypeName property — display label for the mission type." },
-        "MissionTypeName": { "type": "string", "description": "Internal _missionTypeName field — same data via the field path." },
+        "Category": { "type": "string", "description": "MissionCategory enum (Main/Special/Secret/Roguelike/Story) — drives TypeName." },
         "Description": { "type": "string", "description": "Localized description; may be empty for auto-generated missions." },
         "Subclass": { "type": "string", "description": "C# class name of the concrete Mission subclass." },
         "MissionType": { "type": "string", "description": "MissionType enum stringified (e.g. \"None\", \"CleanupDetail\", \"Amalgamation\")." },
@@ -1372,8 +1373,8 @@
         "Name": { "type": "string" },
         "Threats": {
           "type": "array",
-          "minItems": 7,
-          "maxItems": 7,
+          "description": "One weight per threat tier, in `threats` key order (8 tiers as of 1.9).",
+          "minItems": 1,
           "items": { "type": "number" }
         }
       }

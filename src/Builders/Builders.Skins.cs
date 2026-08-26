@@ -226,7 +226,6 @@ partial class Plugin
             // VFXCrab inherits from GunCrab; check the more specific subclass first.
             case SkinUpgradeProperty_VFXCrab vfxCrab:
                 entry.CrabModel = vfxCrab.crab?.name;
-                if (vfxCrab.myUpgrade != null) entry.CrabUpgrade = UpgradeKey(vfxCrab.myUpgrade.ID);
                 entry.VfxCrabNameID = GetPrivateField<string>(vfxCrab, "nameID");
                 entry.VfxCrabName = LocText(entry.VfxCrabNameID, 0);
                 try { entry.VfxCrabNameColor = GetPrivateField<Rarity>(vfxCrab, "nameColor").ToString(); } catch { }
@@ -247,13 +246,11 @@ partial class Plugin
 
             case SkinUpgradeProperty_GunCrab_List gcList:
                 entry.CrabModel = gcList.crab?.name;
-                if (gcList.myUpgrade != null) entry.CrabUpgrade = UpgradeKey(gcList.myUpgrade.ID);
                 if (gcList.meshes != null) entry.CrabMeshes = gcList.meshes.Where(m => m != null).Select(m => m.name).ToArray();
                 break;
 
             case SkinUpgradeProperty_GunCrab gunCrab:
                 entry.CrabModel = gunCrab.crab?.name;
-                if (gunCrab.myUpgrade != null) entry.CrabUpgrade = UpgradeKey(gunCrab.myUpgrade.ID);
                 break;
 
             case SkinUpgradeProperty_VFXCustomProp vfxCustom:

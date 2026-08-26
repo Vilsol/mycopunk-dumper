@@ -19,7 +19,7 @@ partial class Plugin
             Name = m.Name,
             MissionName = m.MissionName,
             TypeName = m.MissionTypeName,
-            MissionTypeName = GetPrivateField<string>(m, "_missionTypeName"),
+            Category = m.category.ToString(),
             Description = m.Description,
             Subclass = t.Name,
             MissionType = m.MissionType.ToString(),
