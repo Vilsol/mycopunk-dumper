@@ -24,6 +24,7 @@ public class ThreatProfile
 {
     public string Name;            // ScriptableObject asset name
     public float[] Threats;        // length 7 (one per threat tier)
+    public bool Additive;          // true: Clamp01(value + Threats[t]); false: value * Threats[t]
 }
 
 /// <summary>

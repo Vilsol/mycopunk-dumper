@@ -11,7 +11,6 @@ public class Economy
     public int BaseXPForSideObjective;
     public int BaseResourcesForSideObjective;
     public float[] ResourceAmountMultiplier;
-    public int[] SurvivalBonusScrip;
     public float[] IntensityScripAndXPMultiplier;
 
     public Dictionary<string, float> EnemyUpgradeDropChances;  // keyed by EnemyType

@@ -95,7 +95,6 @@ partial class Plugin
             BaseXPForSideObjective = g.BaseXPForSideObjective,
             BaseResourcesForSideObjective = g.BaseResourcesForSideObjective,
             ResourceAmountMultiplier = ThreatValues(g.ResourceAmountMultiplier),
-            SurvivalBonusScrip = ThreatValues(g.SurvivalBonusScrip),
             IntensityScripAndXPMultiplier = IntensityValues(g.IntensityScripAndXPMultiplier),
             EnemyUpgradeDropChances = drops,
             CombatResourceSpawnChance = g.CombatResourceSpawnChance,

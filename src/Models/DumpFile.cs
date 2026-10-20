@@ -50,6 +50,8 @@ public class DumpFile
     public SortedDictionary<string, GridProfileEntry> gridProfiles;    // per-level upgrade-grid size curves
     public SortedDictionary<string, PlanetEntry> planets;             // planet biome-composition arrays
     public SortedDictionary<string, FulfillmentEntry> fulfillments;   // in-game achievements/challenges: condition, score, reward
+    public SortedDictionary<string, Entitlement> entitlements;        // DLC/supporter packs (Global.EntitlementPacks)
+    public Rock[] rocks;                                               // pet-rock sources (RockManager), index == PetRock.SourceID
     public Difficulty difficulty;                                      // Global threat × player-count enemy scaling
     public Economy economy;                                            // Global mission rewards, drop chances, rarity weights
     public SortedDictionary<string, MissionEventEntry> missionEvents;  // Global.MissionEvents — random mid-mission events

@@ -23,6 +23,8 @@ partial class Plugin
         };
         var baseSkin = GetPrivateField<global::Upgrade>(s, "baseSkin");
         if (baseSkin != null) skin.BaseSkin = UpgradeKey(baseSkin.ID);
+        var ent = GetPrivateField<EntitlementPack>(s, "requiredEntitlement");
+        if (ent != null) skin.RequiredEntitlement = ent.name;
         var codex = s.CountWithInCodex;
         if (codex != null) skin.CountWithInCodex = UpgradeKey(codex.ID);
 
@@ -95,7 +97,7 @@ partial class Plugin
     {
         SkinType.Crab => "sk_crab",
         SkinType.Flair => "sk_flair",
-        SkinType.Coat => "sk_coat",
+        SkinType.Motion => "sk_anim",
         _ => "skin",
     };
 
@@ -110,11 +112,11 @@ partial class Plugin
     {
         var entry = new Upgrade.DSkinModifier { Type = p.GetType().Name };
 
-        // Universal: chance + curve (most SkinUpgradeProperty subclasses extend
-        // SkinUpgradePropertyRandStat which carries both).
+        // Universal: chance + curve. SkinUpgradeProperty.Chance covers subclasses that override
+        // it without a backing field (RarityColoring, DevGild, MultiHat, ...).
         try
         {
-            var chance = GetPrivateFieldNullable<float>(p, "chance");
+            var chance = p is SkinUpgradeProperty sp ? sp.Chance : GetPrivateFieldNullable<float>(p, "chance");
             if (chance.HasValue) entry.Chance = chance.Value;
         }
         catch { }
@@ -272,6 +274,52 @@ partial class Plugin
                 entry.VfxCustomPropValue = new[] { v.x, v.y, v.z, v.w };
                 break;
 
+            case SkinUpgradeProperty_MultiHat multiHat:
+                entry.HatPrefab = multiHat.hatPrefab?.name;
+                entry.HatMesh = multiHat.mesh?.name;
+                if (multiHat.meshes != null) entry.HatMeshes = multiHat.meshes.Where(m => m != null).Select(m => m.name).ToArray();
+                break;
+
+            case SkinUpgradeProperty_Hat hat:
+                entry.HatPrefab = hat.hatPrefab?.name;
+                entry.HatMesh = hat.mesh?.name;
+                break;
+
+            case SkinUpgradeProperty_Specular spec:
+                entry.SpecularColor = spec.specularColor.ToString();
+                if (spec.shadowSpecular.useOverride) entry.SpecularShadowOverride = spec.shadowSpecular.value;
+                break;
+
+            case SkinUpgradeProperty_NegativeSpecularColor negSpec:
+                entry.SpecularColor = negSpec.specularColor.ToString();
+                break;
+
+            case SkinUpgradeProperty_SwarmGun_Reload swarmReload:
+                entry.ReloadAnimation = swarmReload.animation?.name;
+                entry.ReloadLoopAnimation = swarmReload.loop?.name;
+                entry.ReloadEndAnimation = swarmReload.end?.name;
+                break;
+
+            case SkinUpgradeProperty_Reload reload:
+                entry.ReloadAnimation = reload.animation?.name;
+                break;
+
+            case SkinUpgradeProperty_RarityColoring:
+                // Mirrors the hardcoded thresholds in SkinUpgradeProperty_RarityColoring.Apply.
+                entry.RarityColoringWeights = new SortedDictionary<string, float>
+                {
+                    ["Standard"] = 0.52f, ["Rare"] = 0.25f, ["Epic"] = 0.15f, ["Exotic"] = 0.08f,
+                };
+                break;
+
+            case SkinUpgradeProperty_SequentialOverlayMats seqOverlay:
+                if (seqOverlay.overlayTextures != null) entry.OverlayTextures = seqOverlay.overlayTextures.Where(t => t != null).Select(t => t.name).ToArray();
+                break;
+
+            case SkinUpgradeProperty_TextureMultiple texMulti:
+                if (texMulti.textures != null) entry.TextureMains = texMulti.textures.Where(t => t != null).Select(t => t.mainTex?.name).ToArray();
+                break;
+
             case SkinUpgradeProperty_CharacterModel cm:
                 entry.CharacterModelArmL = GetPrivateField<UnityEngine.Mesh>(cm, "firstPersonArmL")?.name;
                 entry.CharacterModelArmR = GetPrivateField<UnityEngine.Mesh>(cm, "firstPersonArmR")?.name;
@@ -389,146 +437,218 @@ partial class Plugin
             return;
         }
 
+        foreach (var up in upgradable.Info.Upgrades) ProcessUpgrade(up, upgradable);
+    }
+
+    private static Upgrade ProcessUpgrade(global::Upgrade up, IUpgradable upgradable)
+    {
         var upgradableName = upgradable.ToString();
         var upgradableApiName = upgradable.Info?.APIName ?? upgradable.GetType().Name;
 
-        foreach (var up in upgradable.Info.Upgrades)
+        if (!UpgradeMap.TryGetValue(UpgradeKey(up.ID), out var upgradeOut))
         {
-            if (!UpgradeMap.TryGetValue(UpgradeKey(up.ID), out var upgradeOut))
+            upgradeOut = new Upgrade
             {
-                upgradeOut = new Upgrade
+                ApplicableTo = [],
+                ID = UpgradeKey(up.ID),
+                APIName = up.APIName,
+                Name = up.Name.Replace("\"", "\\\""),
+                EffectType = up.EffectType.ToString(),
+                UpgradeType = up.UpgradeType.ToString(),
+                Rarity = up.Rarity.ToString(),
+                Flags = up.Flags.ToString(),
+                Color = up.Color.ToString(),
+                Description = up.Description,
+                Pattern = up.Pattern,
+                MustBeUnlockedFirst = up.MustBeUnlockedFirst?.ToString(),
+                Icon = BuildIcon(up.Icon),
+                Priority = up.Priority,
+                CollectionSource = GetPrivateField<object>(up, "collectionSource")?.ToString(),
+                IsModded = up.IsModded,
+                ModGUID = up.ModGUID
+            };
+
+            // Title fragment (GearUpgrade / PlayerUpgrade override the base's empty default).
+            var title = up.Title;
+            if (!string.IsNullOrEmpty(title.NameID))
+            {
+                upgradeOut.Title = new Upgrade.DTitle
                 {
-                    ApplicableTo = [],
-                    ID = UpgradeKey(up.ID),
-                    APIName = up.APIName,
-                    Name = up.Name.Replace("\"", "\\\""),
-                    EffectType = up.EffectType.ToString(),
-                    UpgradeType = up.UpgradeType.ToString(),
-                    Rarity = up.Rarity.ToString(),
-                    Flags = up.Flags.ToString(),
-                    Color = up.Color.ToString(),
-                    Description = up.Description,
-                    Pattern = up.Pattern,
-                    MustBeUnlockedFirst = up.MustBeUnlockedFirst?.ToString(),
-                    Icon = BuildIcon(up.Icon),
-                    Priority = up.Priority,
-                    CollectionSource = GetPrivateField<object>(up, "collectionSource")?.ToString(),
-                    IsModded = up.IsModded,
-                    ModGUID = up.ModGUID
+                    NameID = title.NameID,
+                    Adjective = LocText(title.NameID, 0),
+                    Noun = LocText(title.NameID, 1),
+                    Priority = title.Priority
                 };
-
-                // Title fragment (GearUpgrade / PlayerUpgrade override the base's empty default).
-                var title = up.Title;
-                if (!string.IsNullOrEmpty(title.NameID))
-                {
-                    upgradeOut.Title = new Upgrade.DTitle
-                    {
-                        NameID = title.NameID,
-                        Adjective = LocText(title.NameID, 0),
-                        Noun = LocText(title.NameID, 1),
-                        Priority = title.Priority
-                    };
-                }
-
-                // Turbocharge / Ouroboros costs (per-rarity formulas, computed by the game)
-                try
-                {
-                    var tc = up.GetTurbochargeCost();
-                    if (tc != null && tc.Count > 0)
-                    {
-                        upgradeOut.TurbochargeCost = tc.Select(c => new Upgrade.DUnlockCost
-                        {
-                            Count = c.count,
-                            Resource = c.resource?.Name,
-                            ResourceID = c.resource?.ID
-                        }).ToArray();
-                    }
-                }
-                catch (Exception ex) { Log.LogWarning($"GetTurbochargeCost failed for {UpgradeKey(up.ID)}: {ex.Message}"); }
-
-                try
-                {
-                    var oc = up.GetOuroborosCost();
-                    if (oc != null && oc.Count > 0)
-                    {
-                        upgradeOut.OuroborosCost = oc.Select(c => new Upgrade.DUnlockCost
-                        {
-                            Count = c.count,
-                            Resource = c.resource?.Name,
-                            ResourceID = c.resource?.ID
-                        }).ToArray();
-                    }
-                }
-                catch (Exception ex) { Log.LogWarning($"GetOuroborosCost failed for {UpgradeKey(up.ID)}: {ex.Message}"); }
-
-                // Cosmetic-specific data — only populated for SkinUpgrade instances.
-                if (up is SkinUpgrade skin)
-                {
-                    upgradeOut.Skin = BuildSkin(skin);
-                }
-
-                if (up.Properties.properties != null)
-                {
-                    var properties = new Upgrade.DProperty[up.Properties.properties.Length];
-                    for (var i = 0; i < up.Properties.properties.Length; i++)
-                    {
-                        var prop = up.Properties.properties[i];
-                        var typeName = prop.GetType().Name;
-                        properties[i] = new Upgrade.DProperty
-                        {
-                            Type = typeName,
-                            Label = PrettifyPropertyType(typeName),
-                            Raw = prop
-                        };
-                    }
-                    upgradeOut.Properties = properties;
-                }
-
-                var unlockCost = up.GetUnlockCost();
-                upgradeOut.UnlockCost = new Upgrade.DUnlockCost[unlockCost.Count];
-                for (var j = 0; j < unlockCost.Count; j++)
-                {
-                    upgradeOut.UnlockCost[j] = new Upgrade.DUnlockCost
-                    {
-                        Count = unlockCost[j].count,
-                        Resource = unlockCost[j].resource?.Name,
-                        ResourceID = unlockCost[j].resource?.ID
-                    };
-                }
-
-                if (up.additionalUnlockCost != null)
-                {
-                    upgradeOut.AdditionalUnlockCost = new Upgrade.DUnlockCost[up.additionalUnlockCost.Length];
-                    for (var j = 0; j < up.additionalUnlockCost.Length; j++)
-                    {
-                        upgradeOut.AdditionalUnlockCost[j] = new Upgrade.DUnlockCost
-                        {
-                            Count = up.additionalUnlockCost[j].count,
-                            Resource = up.additionalUnlockCost[j].resource?.Name,
-                            ResourceID = up.additionalUnlockCost[j].resource?.ID
-                        };
-                    }
-                }
-
-                UpgradeMap[UpgradeKey(up.ID)] = upgradeOut;
             }
 
-            upgradeOut.ApplicableTo.Add(new Upgrade.DUpgradeable
+            // Turbocharge / Ouroboros costs (per-rarity formulas, computed by the game)
+            try
             {
-                Name = upgradableName,
-                APIName = upgradableApiName
-            });
-
-            if (up.Properties.properties != null && upgradeOut.Properties != null)
-            {
-                var count = System.Math.Min(upgradeOut.Properties.Length, up.Properties.properties.Length);
-                for (var i = 0; i < count; i++)
+                var tc = up.GetTurbochargeCost();
+                if (tc != null && tc.Count > 0)
                 {
-                    CollectPropertyStats(upgradeOut.Properties[i], up.Properties.properties[i], upgradable, upgradableApiName,
-                        s => new UpgradeInstance(up, upgradable) { Seed = s }, UpgradeKey(up.ID));
+                    upgradeOut.TurbochargeCost = tc.Select(c => new Upgrade.DUnlockCost
+                    {
+                        Count = c.count,
+                        Resource = c.resource?.Name,
+                        ResourceID = c.resource?.ID
+                    }).ToArray();
                 }
+            }
+            catch (Exception ex) { Log.LogWarning($"GetTurbochargeCost failed for {UpgradeKey(up.ID)}: {ex.Message}"); }
+
+            try
+            {
+                var oc = up.GetOuroborosCost();
+                if (oc != null && oc.Count > 0)
+                {
+                    upgradeOut.OuroborosCost = oc.Select(c => new Upgrade.DUnlockCost
+                    {
+                        Count = c.count,
+                        Resource = c.resource?.Name,
+                        ResourceID = c.resource?.ID
+                    }).ToArray();
+                }
+            }
+            catch (Exception ex) { Log.LogWarning($"GetOuroborosCost failed for {UpgradeKey(up.ID)}: {ex.Message}"); }
+
+            // Cosmetic-specific data — only populated for SkinUpgrade instances.
+            if (up is SkinUpgrade skin)
+            {
+                upgradeOut.Skin = BuildSkin(skin);
+            }
+
+            if (up.Properties.properties != null)
+            {
+                var properties = new Upgrade.DProperty[up.Properties.properties.Length];
+                for (var i = 0; i < up.Properties.properties.Length; i++)
+                {
+                    var prop = up.Properties.properties[i];
+                    var typeName = prop.GetType().Name;
+                    properties[i] = new Upgrade.DProperty
+                    {
+                        Type = typeName,
+                        Label = PrettifyPropertyType(typeName),
+                        Raw = prop
+                    };
+                }
+                upgradeOut.Properties = properties;
+            }
+
+            var unlockCost = up.GetUnlockCost();
+            upgradeOut.UnlockCost = new Upgrade.DUnlockCost[unlockCost.Count];
+            for (var j = 0; j < unlockCost.Count; j++)
+            {
+                upgradeOut.UnlockCost[j] = new Upgrade.DUnlockCost
+                {
+                    Count = unlockCost[j].count,
+                    Resource = unlockCost[j].resource?.Name,
+                    ResourceID = unlockCost[j].resource?.ID
+                };
+            }
+
+            if (up.additionalUnlockCost != null)
+            {
+                upgradeOut.AdditionalUnlockCost = new Upgrade.DUnlockCost[up.additionalUnlockCost.Length];
+                for (var j = 0; j < up.additionalUnlockCost.Length; j++)
+                {
+                    upgradeOut.AdditionalUnlockCost[j] = new Upgrade.DUnlockCost
+                    {
+                        Count = up.additionalUnlockCost[j].count,
+                        Resource = up.additionalUnlockCost[j].resource?.Name,
+                        ResourceID = up.additionalUnlockCost[j].resource?.ID
+                    };
+                }
+            }
+
+            UpgradeMap[UpgradeKey(up.ID)] = upgradeOut;
+        }
+
+        upgradeOut.ApplicableTo.Add(new Upgrade.DUpgradeable
+        {
+            Name = upgradableName,
+            APIName = upgradableApiName
+        });
+
+        if (up.Properties.properties != null && upgradeOut.Properties != null)
+        {
+            var count = System.Math.Min(upgradeOut.Properties.Length, up.Properties.properties.Length);
+            for (var i = 0; i < count; i++)
+            {
+                CollectPropertyStats(upgradeOut.Properties[i], up.Properties.properties[i], upgradable, upgradableApiName,
+                    s => new UpgradeInstance(up, upgradable) { Seed = s }, UpgradeKey(up.ID));
+                ResolveFlagNames(upgradeOut.Properties[i], up.Properties.properties[i], upgradable);
             }
         }
+        return upgradeOut;
+    }
+
+    // Gear class → its per-gear flag enum where the name doesn't follow "<Class>UpgradeFlags".
+    private static readonly Dictionary<string, Type> GearFlagEnumOverrides = new()
+    {
+        ["CartridgeSMG"] = typeof(SMGUpgradeFlags),
+        ["ScoutLaserRifle"] = typeof(DMLRUpgradeFlags),
+        ["FastReloadShotgun"] = typeof(FastShotgunUpgradeFlags),
+        ["ScrapperGear"] = typeof(GrapplePoleUpgradeFlags),
+        ["AcceleratorGun"] = typeof(AcceleratorUpgradeFlags),
+    };
+
+    private static Type GearFlagEnum(object gear)
+    {
+        for (var t = gear?.GetType(); t != null && t != typeof(object); t = t.BaseType)
+        {
+            if (GearFlagEnumOverrides.TryGetValue(t.Name, out var e)) return e;
+            e = typeof(GearUpgradeFlags).Assembly.GetType(t.Name + "UpgradeFlags");
+            if (e != null && e.IsEnum) return e;
+        }
+        return null;
+    }
+
+    // UpgradeFlag / PlayerUpgradeFlag store a bare int; the bits mean different things per gear.
+    // Mirrors who reads them: gear upgrades → the gear's enum; character-tree upgrades → the
+    // character's UtilityItem gear; Global → Player.UpgradeFlags (PlayerUpgradeFlags);
+    // PlayerUpgradeFlagField → per-character enum, else PlayerUpgradeFlags. Bits the
+    // specific enum doesn't define fall back to the shared GearUpgradeFlags/PlayerUpgradeFlags names.
+    private static void ResolveFlagNames(Upgrade.DProperty dp, UpgradeProperty prop, IUpgradable upgradable)
+    {
+        if (dp.FlagNames != null) return;
+        int bits;
+        Type specific, shared = typeof(GearUpgradeFlags);
+        switch (prop)
+        {
+            case UpgradeProperty_PlayerUpgradeFlag pf:
+                bits = (int)pf.flags.flags;
+                shared = typeof(PlayerUpgradeFlags);
+                var c = pf.flags.character;
+                var g = Global.Instance;
+                specific = c == null ? null
+                    : c == g.WranglerCharacter ? typeof(WranglerUpgradeFlags)
+                    : c == g.BruiserCharacter ? typeof(BruiserUpgradeFlags)
+                    : c == g.ScrapperCharacter ? typeof(ScrapperUpgradeFlags)
+                    : c == g.GliderCharacter ? typeof(GliderUpgradeFlags)
+                    : null;
+                break;
+            case UpgradeProperty_UpgradeFlag uf:
+                bits = (int)uf.flags.flags;
+                if (upgradable is Global) { specific = null; shared = typeof(PlayerUpgradeFlags); }
+                else if (upgradable is Character ch) specific = GearFlagEnum(ch.UtilityItem?.GetComponent<IGear>());
+                else specific = GearFlagEnum(upgradable);
+                break;
+            default:
+                return;
+        }
+        var names = new List<string>();
+        for (int b = 0; b < 32; b++)
+        {
+            int bit = 1 << b;
+            if ((bits & bit) == 0) continue;
+            string name = null;
+            if (specific != null && Enum.IsDefined(specific, bit)) name = Enum.GetName(specific, bit);
+            if (name == null && Enum.IsDefined(shared, bit)) name = Enum.GetName(shared, bit);
+            names.Add(name ?? bit.ToString());
+        }
+        dp.FlagEnum = specific?.Name ?? shared.Name;
+        dp.FlagNames = names.ToArray();
     }
 
     // Multi-seed StatData + ModifyProperties capture for one property against one upgradable.
@@ -648,5 +768,73 @@ partial class Plugin
         {
             Log.LogWarning($"ModifyProperties failed for {ownerKey} property {prop.GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
         }
+
+        CollectTurbochargedStats(dp, prop, upgradable, upgradableApiName, makeInstance, collected);
+    }
+
+    // Second pass with the instance's Turbocharged bit set directly (the IsTurbocharged setter
+    // writes PlayerData). Many properties only yield stats/text when turbocharged. Seed 0 only,
+    // matching StatsByUpgradable; emitted only where it differs beyond maxed rolls.
+    private static void CollectTurbochargedStats(Upgrade.DProperty dp, UpgradeProperty prop, IUpgradable upgradable,
+        string upgradableApiName, Func<int, UpgradeInstance> makeInstance, List<StatData> normal)
+    {
+        UpgradeInstance MakeTurbo()
+        {
+            var inst = makeInstance(0);
+            if (inst != null) inst.flags |= UpgradeInstance.Flags.Turbocharged;
+            return inst;
+        }
+        if (makeInstance(0) == null) return;
+
+        try
+        {
+            var turbo = new List<StatData>();
+            var enumerator = prop.GetStatData(new Pigeon.Math.Random(0), upgradable, MakeTurbo());
+            if (enumerator != null)
+            {
+                try { while (enumerator.MoveNext()) turbo.Add(enumerator.Current); }
+                finally { (enumerator as IDisposable)?.Dispose(); }
+            }
+            // Turbocharging maxes every ranged roll (StatData.Create: value = max); that's implied by
+            // maxValue, so ignore `value` on ranged stats when deciding whether turbo adds anything.
+            static string Shape(List<StatData> l) => JsonConvert.SerializeObject(l.Select(sd =>
+            {
+                if (sd.minValue != null && sd.maxValue != null) sd.value = null;
+                return sd;
+            }));
+            if (Shape(turbo) != Shape(normal))
+            {
+                dp.StatsByUpgradableTurbocharged ??= new SortedDictionary<string, StatData[]>();
+                dp.StatsByUpgradableTurbocharged[upgradableApiName] = turbo.ToArray();
+            }
+        }
+        catch { }
+
+        try
+        {
+            var normalText = "";
+            prop.ModifyProperties(ref normalText, new Pigeon.Math.Random(0), upgradable, makeInstance(0));
+            var turboText = "";
+            prop.ModifyProperties(ref turboText, new Pigeon.Math.Random(0), upgradable, MakeTurbo());
+            turboText = turboText?.Trim('\n', '\r', ' ');
+            if (!string.IsNullOrEmpty(turboText) && turboText != normalText?.Trim('\n', '\r', ' '))
+            {
+                dp.ModifyTextByUpgradableTurbocharged ??= new SortedDictionary<string, string>();
+                dp.ModifyTextByUpgradableTurbocharged[upgradableApiName] = turboText;
+            }
+        }
+        catch { }
+
+        // Hover popup's "When turbocharged:" lines, shown before the upgrade is turbocharged.
+        try
+        {
+            var info = prop.GetTurbochargedInfo(new Pigeon.Math.Random(0), upgradable, makeInstance(0));
+            if (!string.IsNullOrEmpty(info))
+            {
+                dp.TurbochargedInfoByUpgradable ??= new SortedDictionary<string, string>();
+                dp.TurbochargedInfoByUpgradable[upgradableApiName] = info.Trim('\n', '\r', ' ');
+            }
+        }
+        catch { }
     }
 }

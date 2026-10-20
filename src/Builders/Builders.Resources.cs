@@ -53,6 +53,7 @@ partial class Plugin
                 UpgradeRareResourceCost = GetPrivateField<int>(r, "upgradeRareResourceCost"),
                 CleanseCost = GetPrivateField<int>(r, "cleanseCost"),
                 CraftNewSaxoniteCost = GetPrivateField<int>(r, "craftNewSaxoniteCost"),
+                CraftNewNormalResourceCost = GetPrivateField<int>(r, "craftNewNormalResourceCost"),
                 ScrapResource = scrap?.ID,
                 Color = GetPrivateField<UnityEngine.Color>(r, "color").ToString(),
                 BackgroundColor = GetPrivateField<UnityEngine.Color>(r, "backgroundColor").ToString(),
@@ -116,14 +117,77 @@ partial class Plugin
         }
         CraftingEntry = new Crafting
         {
-            MinLevelToAccessCrafting = 10, // const in source — CraftingWindow.MinLevelToAccessCrafting
+            MinLevelToAccessCrafting = CraftingWindow.MinLevelToAccessCrafting,
             RandomCraftCost = read("randomCraftCost"),
             WeaponCraftCost = read("weaponCraftCost"),
             UpgradeCraftCost = read("upgradeCraftCost"),
+            RandomNewCraftCost = read("randomNewCraftCost"),
+            WeaponNewCraftCost = read("weaponNewCraftCost"),
             UpcraftToRareCost = read("upcraftToRareCost"),
             UpcraftToEpicCost = read("upcraftToEpicCost"),
             UpcraftToExoticCost = read("upcraftToExoticCost")
         };
+
+        // Mirror CraftingWindow.SetRarity: [0] becomes the rarity's scrap, middle entries scale
+        // off craftNewNormalResourceCost, the last (saxonite) entry scales off craftNewSaxoniteCost.
+        var buttons = t.GetField("rarityButtons", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(cw) as System.Array;
+        var rarities = Global.Instance.Rarities;
+        int n = Math.Min(rarities.Length, buttons?.Length ?? 0);
+        CraftingEntry.ByRarity = new SortedDictionary<string, Crafting.RarityCosts>();
+        for (int i = 0; i < n; i++)
+        {
+            var rd = rarities[i];
+            var scrap = rd.scrapResource;
+            int normal = rd.craftNewNormalResourceCost;
+            Upgrade.DUnlockCost[] patch(Upgrade.DUnlockCost[] tpl, int? mid, int? last)
+            {
+                if (tpl == null) return null;
+                var arr = tpl.Select(c => new Upgrade.DUnlockCost { Count = c.Count, Resource = c.Resource, ResourceID = c.ResourceID }).ToArray();
+                if (arr.Length == 0) return arr;
+                arr[0].Resource = scrap?.Name;
+                arr[0].ResourceID = scrap?.ID;
+                if (mid.HasValue) for (int k = 1; k < arr.Length - 1; k++) arr[k].Count = mid.Value;
+                if (last.HasValue && arr.Length > 1) arr[^1].Count = last.Value;
+                return arr;
+            }
+            CraftingEntry.ByRarity[GetPrivateField<string>(rd, "name")] = new Crafting.RarityCosts
+            {
+                RandomCraftCost = patch(CraftingEntry.RandomCraftCost, UnityEngine.Mathf.CeilToInt(normal * 0.65f), null),
+                RandomNewCraftCost = patch(CraftingEntry.RandomNewCraftCost, normal, rd.craftNewSaxoniteCost),
+                WeaponCraftCost = patch(CraftingEntry.WeaponCraftCost, null, null),
+                WeaponNewCraftCost = patch(CraftingEntry.WeaponNewCraftCost, UnityEngine.Mathf.CeilToInt(normal * 1.4f), UnityEngine.Mathf.CeilToInt(rd.craftNewSaxoniteCost * 1.4f)),
+                UpgradeCraftCost = patch(CraftingEntry.UpgradeCraftCost, null, null)
+            };
+        }
+    }
+
+    private static Entitlement BuildEntitlement(EntitlementPack ep)
+    {
+        ep.HasNametagIcon(out var icon);
+        return new Entitlement
+        {
+            Name = ep.name,
+            SteamID = ep.SteamID,
+            PS5ID = string.IsNullOrEmpty(ep.PS5ID) ? null : ep.PS5ID,
+            AvailableOnSteam = ep.AvailableOnSteam,
+            PlayerFlagTag = GetPrivateField<string>(ep, "playerFlagTag") is { Length: > 0 } tag ? tag : null,
+            NametagIcon = BuildIcon(icon),
+            UnlockWithPack = ep.unlockWithPack?
+                .Where(x => x.Upgrade != null)
+                .Select(x => new Entitlement.Item { Upgrade = UpgradeKey(x.Upgrade.ID), Seed = x.Seed })
+                .ToArray()
+        };
+    }
+
+    private static Rock[] BuildRocks()
+    {
+        var rm = RockManager.Instance;
+        if (rm == null) return null;
+        return Enumerable.Range(0, rm.RockCount).Select(i =>
+        {
+            var a = rm.GetRock(i);
+            return new Rock { SourceID = i, Asteroid = a != null ? a.name : null, Skin = a != null && a.Skin != null ? a.Skin.name : null };
+        }).ToArray();
     }
 
     // ---- Dialogue catalog ---------------------------------------------------

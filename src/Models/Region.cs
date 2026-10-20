@@ -10,6 +10,11 @@ public class Region
     public string Flags;                 // LevelFlags stringified (comma-separated)
     public string Color;                 // RGBA(r, g, b, a)
     public bool LockRegion;
+    public int MinThreat;
+    public int MaxThreat;
+    public bool ExcludeFromOvertimeAssignment;
+    public string Planet;                // key into `planets`
+    public string[] DefaultModifiers;    // keys into `missionModifiers`
     public Upgrade.DIcon Icon;
     public MissionEntry.SceneRef[] Scenes;
     public Profile[] WorldProfiles;

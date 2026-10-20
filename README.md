@@ -18,7 +18,9 @@ Used to power external tools (wikis, build calculators, skin browsers) without s
 | `enemyParts` | shared enemy part prefabs (cores, shells, legs, arm tips) with health, attack and overclock stats; referenced from `enemies` |
 | `difficulty` / `missionGeneration` | threat × player-count scaling grids, intensity pacing, revive counts, mission-modifier / side-objective roll weights |
 | `missionEvents` | weighted in-mission events (weather, amalgamation, rocket passover) |
-| `worldObjects` | hazards and pickups (hornets, turrets, shrooms, heal/ammo/resource pickups, launch pads, …) |
+| `worldObjects` | hazards and pickups (hornets, turrets, shrooms, heal/ammo/resource pickups, launch pads, …), plus scene-only hub interactables and the Rhombomination boss |
+| `planets` / `regions` | planets (name, min level, hazardous) and regions (threat range, planet, world profiles) |
+| `entitlements` / `rocks` | DLC packs and what they unlock (skins carry `RequiredEntitlement`); pet-rock skin mapping |
 | `combatGlobals` / `genericStatUpgrades` | global damage constants/curves; the random stat pool behind `ApplyStatUpgrades` |
 | `statusEffects` / `stacks` / `threats` / `threatProfiles` | combat tuning |
 | `lootPools` / `directives` / `globalEvents` / `encounters` | content gating + drops |
@@ -41,7 +43,7 @@ A formal **JSON Schema (Draft 2020-12)** description is at [`data.schema.json`](
   ```
 
   - `winhttp.dll=n,b` lets the BepInEx `winhttp.dll` shim load under Proton.
-  - `-batchmode -nographics` makes Unity skip rendering; the plugin's `Start()` writes `data.json` and the game self-exits (~20s end-to-end).
+  - `-batchmode -nographics` makes Unity skip rendering; the plugin's `Start()` writes `data.json` and the game self-exits (~35s end-to-end, including additive loads of the Hub and boss scenes).
   - Drop `-batchmode -nographics` only when you want to run `mise run render-skins` (which needs a real GPU context).
 
 `MYCOPUNK_DIR` defaults to the Steam-Linux install path. Override it in `mise.toml` (or in your shell) if your install lives elsewhere — the `.csproj` references resolve through `$(MYCOPUNK_DIR)`.
@@ -58,7 +60,7 @@ All build & deploy flows are mise tasks.
 | `mise run release` | Release build → `src/bin/Release/netstandard2.1/MycopunkDumper.dll` |
 | `mise run clean` | `dotnet clean src` |
 | `mise run deploy` | Release + copy DLL into `$MYCOPUNK_DIR/BepInEx/plugins` |
-| `mise run dump` | Deploy + headless launch + wait for `data.json` (~20s) |
+| `mise run dump` | Deploy + headless launch + wait for `data.json` (~35s) |
 | `mise run copy-dump` | Copy `$MYCOPUNK_DIR/data.json` into the repo |
 | `mise run probe` | Like `dump` but with `Probe.cs` enabled — writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, catalogs/, global-fields.txt, components.txt, subclasses.txt, samples/}` for exploration before adding a new dumper |
 | `mise run coverage` | After `probe`: list ScriptableObject catalogs, `Global` fields and prefab component types the dumper doesn't reference yet |

@@ -87,6 +87,14 @@ public class CharacterEntry : Gear
     public Quip[] Quips;
     public Quip[] DefaultEmotes;
     public string DefaultUpgradeType;
+    public string DefaultUpgrade;                // upgrade key of the innate ability (Character.DefaultUpgrade)
+    // Character-select "third ability" (e.g. Mycologist); null when the character has none.
+    public string ThirdAbilityNameID;
+    public string ThirdAbilityName;
+    public string ThirdAbilityDescriptionID;
+    public int? ThirdAbilityDescriptionIndex;
+    public string ThirdAbilityDescription;
+    public Upgrade.DIcon ThirdAbilityIcon;
     public string DefaultSkinType;
     public SkillTreeNode[] SkillTree;            // skill-tree node graph for this character (UpgradeTree-flagged upgrades)
 

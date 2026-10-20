@@ -130,7 +130,7 @@ partial class Plugin
         return string.Join("/", parts);
     }
 
-    private static SortedDictionary<string, object> PartFields(UnityEngine.Object c, UnityEngine.GameObject root)
+    private static SortedDictionary<string, object> PartFields(object c, UnityEngine.GameObject root)
     {
         var fields = new SortedDictionary<string, object>();
         const BindingFlags bf = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;

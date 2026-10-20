@@ -82,6 +82,16 @@ partial class Plugin
         ch.PrimaryColorTag = c.PrimaryColorTag;
         ch.TextColorTag = c.TextColorTag;
         ch.DefaultUpgradeType = c.DefaultUpgrade?.GetType().Name;
+        if (c.DefaultUpgrade != null) ch.DefaultUpgrade = UpgradeKey(c.DefaultUpgrade.ID);
+        if (!string.IsNullOrEmpty(c.ThirdAbilityName))
+        {
+            ch.ThirdAbilityNameID = c.ThirdAbilityName;
+            ch.ThirdAbilityName = LocText(c.ThirdAbilityName, 0);
+            ch.ThirdAbilityDescriptionID = c.ThirdAbilityDesc;
+            ch.ThirdAbilityDescriptionIndex = c.ThirdAbilityDescIndex;
+            ch.ThirdAbilityDescription = LocText(c.ThirdAbilityDesc, c.ThirdAbilityDescIndex);
+            ch.ThirdAbilityIcon = BuildIcon(c.ThirdAbilityIcon);
+        }
         ch.DefaultSkinType = c.DefaultSkin?.GetType().Name;
         if (c.Quips != null) ch.Quips = c.Quips.Select(BuildQuip).ToArray();
         if (c.DefaultEmotes != null) ch.DefaultEmotes = c.DefaultEmotes.Select(BuildQuip).ToArray();

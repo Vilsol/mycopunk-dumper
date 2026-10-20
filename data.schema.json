@@ -112,7 +112,7 @@
     },
     "threatProfiles": {
       "type": "object",
-      "description": "Per-threat-level scaling curves (ThreatModifierProfile). Each profile's `Threats` array is indexed 0..6 (threat1..threat7). Used by various game systems to scale e.g. modifier chances, reward rates, and enemy stats with mission threat. Keyed by SO asset name.",
+      "description": "Per-threat-level scaling curves (ThreatModifierProfile). Each profile's `Threats` array is indexed by threat tier; `Additive` picks how the value is applied. Used by various game systems to scale e.g. modifier chances, reward rates, and enemy stats with mission threat. Keyed by SO asset name.",
       "additionalProperties": { "$ref": "#/$defs/ThreatProfile" }
     },
     "customWaves": {
@@ -211,13 +211,23 @@
     },
     "planets": {
       "type": "object",
-      "description": "Planet biome-composition arrays. Catalog source: `Resources.FindObjectsOfTypeAll<Planet>()`. Keyed by SO asset name (e.g. \"New Atlas\").",
+      "description": "Planet catalog (name, subtitle, unlock level, hazard flag, biome composition). Catalog source: `Resources.FindObjectsOfTypeAll<Planet>()`. Keyed by SO asset name (e.g. \"New Atlas\", \"X11B\"); raw `planet` instanceIDs carry `@ref: \"planet:<key>\"`.",
       "additionalProperties": { "$ref": "#/$defs/PlanetEntry" }
     },
     "fulfillments": {
       "type": "object",
       "description": "In-game achievements/challenges. Catalog source: `Resources.LoadAll<Fulfillment>(\"\")` — these are not referenced by anything loaded at startup, so `FindObjectsOfTypeAll` does not see them. Keyed by `Fulfillment.ID` (e.g. \"f_bunker\", \"ff_grid\"). Distinct from `achievements`, which is only the list of Steam achievement API IDs.",
       "additionalProperties": { "$ref": "#/$defs/FulfillmentEntry" }
+    },
+    "entitlements": {
+      "type": "object",
+      "description": "DLC/supporter packs from `Global.Instance.EntitlementPacks`. Keyed by SO asset name; raw instanceIDs carry `@ref: \"entitlement:<key>\"`. Skins gated by a pack name it in `Skin.RequiredEntitlement`.",
+      "additionalProperties": { "$ref": "#/$defs/Entitlement" }
+    },
+    "rocks": {
+      "type": "array",
+      "description": "Pet-rock sources from `RockManager.rocks` (loaded via `Resources.Load(\"RockManager\")`). Array index == `PetRock.SourceID`; a pet rock's look is its `Skin` preset applied with the rock's seed.",
+      "items": { "$ref": "#/$defs/Rock" }
     },
     "difficulty": {
       "$ref": "#/$defs/Difficulty",
@@ -247,7 +257,7 @@
     },
     "worldObjects": {
       "type": "object",
-      "description": "Hazard and interactable prefabs, keyed by prefab/asset name (Unity \" (n)\" duplicate suffixes collapsed). Sources: Global.HornetPrefab, HardonTurret, MortarBullet, laserBullets[i] (indexed by LaserArmTip damageEffect), Explodunguses, HealCollectableLarge/SmallPrefab, GenericResourceCollectable, TossResourceCollectable, OverclockedExplosion, AntigravityField; ScrapperGear.grapplePolePrefab; plus every loaded ExplodingTarget, VolatileExplosive, DamageOnHit, AmmoCollectable, LaunchPad, SafetyBubble prefab and AcidFlyTrapData asset. Components use the same shape as `enemyParts` (Fields extraction identical). Notes: ObjectTarget subclasses (Hornet, HostileTurret, ExplodingTarget/AcidShroom/LightningShroom) carry base `maxHealth`; AcidShroom ignores `damage` and spawns Global.AcidPuddlePrefab (5 s lifetime, size = explosionRadius); LightningShroom ignores `damage` and forks combatGlobals lightning damage (range = explosionRadius, 20 hits); LaserBullet/MortarBullet damage comes from the firing enemy part; VolatileExplosive radius × EnemyManager.EnemyExplosionSizeMultiplier; ResourceCollectable `resource` is a `resources` key (Generic sets it at runtime); SafetyBubble `safetyStack`/`damageStack` are `stacks` keys.",
+      "description": "Hazard and interactable prefabs, keyed by prefab/asset name (Unity \" (n)\" duplicate suffixes collapsed). Sources: Global.HornetPrefab, HardonTurret, MortarBullet, laserBullets[i] (indexed by LaserArmTip damageEffect), Explodunguses, HealCollectableLarge/SmallPrefab, GenericResourceCollectable, TossResourceCollectable, OverclockedExplosion, AntigravityField; ScrapperGear.grapplePolePrefab; plus every loaded ExplodingTarget, VolatileExplosive, DamageOnHit, AmmoCollectable, LaunchPad, SafetyBubble prefab and AcidFlyTrapData asset. Components use the same shape as `enemyParts` (Fields extraction identical). Notes: ObjectTarget subclasses (Hornet, HostileTurret, ExplodingTarget/AcidShroom/LightningShroom) carry base `maxHealth`; AcidShroom ignores `damage` and spawns Global.AcidPuddlePrefab (5 s lifetime, size = explosionRadius); LightningShroom ignores `damage` and forks combatGlobals lightning damage (range = explosionRadius, 20 hits); LaserBullet/MortarBullet damage comes from the firing enemy part; VolatileExplosive radius × EnemyManager.EnemyExplosionSizeMultiplier; ResourceCollectable `resource` is a `resources` key (Generic sets it at runtime); SafetyBubble `safetyStack`/`damageStack` are `stacks` keys. Scene-only objects: Hub (`hub`: SpeedBattery, CableCar, Ropevator, CargoElevator, MovingPiston, NetworkSpinningFan, HubCannon, SkillPointCrafter — extra `cost` array of {resource, count}) and RhomProc (`boss`: Rhombomination with core/inner/outer shell health, `playerHealthMultiplier` {Values, PerExtraPlayer}, `threatHealthMultiplier` (per threat), `timeBetweenAttacks`, and one nested object per attack (fastSpikeAttack, explosiveSpewAttack, lasersAttack, suicideDroneAttack, iceWaveAttack) holding its fields plus `Subclass` and prefab names; attack projectiles SpikeProjectile/ExplosiveRigidbody/SuicideTriangle are their own `boss` entries). Scene entries are absent if the scene fails to load within 30s.",
       "additionalProperties": { "$ref": "#/$defs/WorldObject" }
     }
   },
@@ -387,10 +397,51 @@
         }
       }
     },
+    "Entitlement": {
+      "type": "object",
+      "description": "An `EntitlementPack` SO. On first spawn with the pack owned, the game sets `PlayerFlagTag` and unlocks every `UnlockWithPack` upgrade for all supported gear with the given seed.",
+      "required": ["Name"],
+      "properties": {
+        "Name": { "type": "string", "description": "SO asset name (map key)." },
+        "SteamID": { "type": "integer", "description": "Steam DLC app id (0 = none)." },
+        "PS5ID": { "type": "string", "description": "PlayStation product id; absent if empty." },
+        "AvailableOnSteam": { "type": "boolean" },
+        "PlayerFlagTag": { "type": "string", "description": "PlayerData flag set the first time the pack is detected as owned; absent if empty." },
+        "NametagIcon": { "$ref": "#/$defs/DIcon", "description": "Icon shown on the owner's nametag; absent if none." },
+        "UnlockWithPack": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Upgrade", "Seed"],
+            "properties": {
+              "Upgrade": { "type": "string", "description": "Key into `upgrades`." },
+              "Seed": { "type": "integer", "description": "Instance seed the upgrade is unlocked with (0 = default)." }
+            }
+          }
+        }
+      }
+    },
+    "Rock": {
+      "type": "object",
+      "description": "One `Asteroid` prefab in `RockManager.rocks`.",
+      "properties": {
+        "SourceID": { "type": "integer", "description": "Index in `RockManager.rocks` (== `PetRock.SourceID`)." },
+        "Asteroid": { "type": "string", "description": "Asteroid prefab name." },
+        "Skin": { "type": "string", "description": "Key into `upgradePresets`." }
+      }
+    },
     "PlanetEntry": {
       "type": "object",
-      "description": "A Planet SO's biome composition.",
+      "description": "A Planet SO.",
       "properties": {
+        "NameID": { "type": "string", "description": "TextBlocks key for the name (block 0) and default subtitle (block 1)." },
+        "Name": { "type": "string", "description": "Localized name." },
+        "OverrideSubtitleID": { "type": "string", "description": "TextBlocks key overriding the subtitle; absent when the subtitle is block 1 of `NameID`." },
+        "Subtitle": { "type": "string", "description": "Localized subtitle, resolved as the game does." },
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "MinLevel": { "type": "integer", "description": "Player level required to travel here; 0 = never locked." },
+        "DailyModifierRegion": { "type": "string", "description": "Key into `regions` — region whose daily modifier applies to this planet; absent if none." },
+        "IsHazardous": { "type": "boolean" },
         "BiomeData": {
           "type": "array",
           "description": "Raw planetBiomeData int array used by the world generator.",
@@ -469,6 +520,7 @@
           "description": "Secondary cost surface (e.g. crafting cost on top of the unlock cost).",
           "items": { "$ref": "#/$defs/DUnlockCost" }
         },
+        "DefaultUpgradeOf": { "type": "string", "description": "Character APIName when this upgrade is that character's innate ability (`Character.DefaultUpgrade`, e.g. Air Dash, Wingsuit). These aren't in any upgrade grid/tree; ApplicableTo/StatsByUpgradable are evaluated against that character." },
         "ApplicableTo": {
           "type": "array",
           "description": "List of upgradables that can equip this upgrade. Each entry's APIName is a key into gears or characters. The Name is human-readable (\"<DisplayName> (<C# class>)\").",
@@ -558,7 +610,27 @@
               "items": { "type": "string" }
             }
           }
-        }
+        },
+        "StatsByUpgradableTurbocharged": {
+          "type": "object",
+          "description": "Same as `StatsByUpgradable` but evaluated on a turbocharged UpgradeInstance (seed 0). Present only for upgradables where turbocharging changes more than maxing ranged rolls (turbo sets every ranged `value` to `maxValue`, which is implied) — typically properties that only yield stats when turbocharged, or Exotics gaining the \"Turbocharged\" tag line.",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/StatData" }
+          }
+        },
+        "ModifyTextByUpgradableTurbocharged": {
+          "type": "object",
+          "description": "`ModifyProperties` text on a turbocharged instance, keyed by upgradable APIName; only where it differs from `ModifyTextByUpgradable`.",
+          "additionalProperties": { "type": "string" }
+        },
+        "TurbochargedInfoByUpgradable": {
+          "type": "object",
+          "description": "`UpgradeProperty.GetTurbochargedInfo` — the \"When turbocharged:\" lines the hover popup shows before the upgrade is turbocharged (rich-text intact). Keyed by upgradable APIName.",
+          "additionalProperties": { "type": "string" }
+        },
+        "FlagEnum": { "type": "string", "description": "UpgradeProperty_UpgradeFlag / _PlayerUpgradeFlag / _TurbochargeUpgradeFlag only: the enum the game reads the flag bits with — the gear's own `<Gear>UpgradeFlags` (character-tree upgrades use the character's utility gear, e.g. Glider → WingsuitUpgradeFlags), a per-character enum for PlayerUpgradeFlagField with a character, else `PlayerUpgradeFlags` (Global / Player) or `GearUpgradeFlags`.", "examples": ["MycoGearUpgradeFlags", "PlayerUpgradeFlags"] },
+        "FlagNames": { "type": "array", "items": { "type": "string" }, "description": "Set bits of the flag int resolved to member names of `FlagEnum` (bits it doesn't define fall back to the shared GearUpgradeFlags/PlayerUpgradeFlags names, e.g. TriggerReadout; a bare number if neither defines it).", "examples": [["InfectOnlyInCombat"]] }
       }
     },
 
@@ -574,6 +646,7 @@
         "overrideType": { "type": "integer", "description": "Game-internal OverrideType enum." },
         "placeAtEnd": { "type": "boolean", "description": "UI hint — render this stat after others." },
         "stackMessage": { "type": "string", "description": "Optional message shown when the stat stacks." },
+        "colorTag": { "type": "string", "description": "Rich-text color tag wrapped around the value in the tooltip." },
         "boostParams": {
           "type": "object",
           "description": "Boost behavior parameters (e.g. when an upgrade is turbocharged).",
@@ -636,8 +709,9 @@
         "ColorIcon": { "type": "boolean", "description": "Whether the icon is tinted by the skin color at render time." },
         "ChangeHueIfNoModifiersApplied": { "type": "boolean" },
         "OverridesPattern": { "type": "boolean", "description": "True when `SkinUpgrade.overridePattern` is set — the skin tree uses a non-default `HexMapProfile`. Default is `Global.Instance.SkinPattern`." },
-        "SkinType": { "type": "string", "enum": ["Skin", "Crab", "Flair", "Coat", "None"], "description": "`SkinUpgrade.SkinType` — the cosmetic slot this skin occupies." },
-        "SkinTypeName": { "type": "string", "description": "Localized slot label (`skin` / `sk_crab` / `sk_flair` / `sk_coat`). Note the game substitutes \"Hat\" for the Crab label when the wearer is a Character — that is per-gear, so it is not reflected here." },
+        "SkinType": { "type": "string", "enum": ["Skin", "Crab", "Flair", "Motion", "None"], "description": "`SkinUpgrade.SkinType` — the cosmetic slot this skin occupies." },
+        "RequiredEntitlement": { "type": "string", "description": "Key into `entitlements` — the skin is only usable while that pack is owned; absent if ungated." },
+        "SkinTypeName": { "type": "string", "description": "Localized slot label (`skin` / `sk_crab` / `sk_flair` / `sk_anim`). Note the game substitutes \"Hat\" for the Crab label when the wearer is a Character — that is per-gear, so it is not reflected here." },
         "HasVfx": { "type": "boolean", "description": "Any VFX-spawning property is present (GunCrab-derived, VFXMod, VFXCustomProp). Skins with this flag run a `VisualEffect` that needs manual ticking when `Time.timeScale = 0`." },
         "HasCrab": { "type": "boolean", "description": "Any GunCrab-derived property — the gun gets a crab/eye/pump/roach companion prop spawned next to it." },
         "HasCharacterModel": { "type": "boolean", "description": "Any `SkinUpgradeProperty_CharacterModel` — replaces the player's first/third-person mesh." },
@@ -795,7 +869,19 @@
 
         "CharacterModelArmL": { "type": "string", "description": "SkinUpgradeProperty_CharacterModel — `firstPersonArmL` SkinnedMeshRenderer mesh asset name." },
         "CharacterModelArmR": { "type": "string", "description": "`firstPersonArmR` mesh asset name." },
-        "CharacterModelThirdPerson": { "type": "string", "description": "`thirdPersonMesh` mesh asset name." }
+        "CharacterModelThirdPerson": { "type": "string", "description": "`thirdPersonMesh` mesh asset name." },
+
+        "HatPrefab": { "type": "string", "description": "SkinUpgradeProperty_Hat / _MultiHat — `hatPrefab` GameObject name." },
+        "HatMesh": { "type": "string", "description": "`mesh` asset name." },
+        "HatMeshes": { "type": "array", "items": { "type": "string" }, "description": "SkinUpgradeProperty_MultiHat — `meshes` asset names (one per stacked hat)." },
+        "SpecularColor": { "type": "string", "description": "SkinUpgradeProperty_Specular / _NegativeSpecularColor — `specularColor` as RGBA(...) (HDR)." },
+        "SpecularShadowOverride": { "type": "number", "description": "SkinUpgradeProperty_Specular — `shadowSpecular` value when its override is enabled." },
+        "ReloadAnimation": { "type": "string", "description": "SkinUpgradeProperty_Reload / _SwarmGun_Reload (Motion skins) — replacement reload AnimationClip name." },
+        "ReloadLoopAnimation": { "type": "string", "description": "SkinUpgradeProperty_SwarmGun_Reload — `loop` clip name." },
+        "ReloadEndAnimation": { "type": "string", "description": "SkinUpgradeProperty_SwarmGun_Reload — `end` clip name." },
+        "RarityColoringWeights": { "type": "object", "additionalProperties": { "type": "number" }, "description": "SkinUpgradeProperty_RarityColoring — probability of each rarity rolled per instance (hardcoded in the game: rand <= .52 Standard, <= .77 Rare, <= .92 Epic, else Exotic); the skin is tinted with that rarity's lightColor and named after it." },
+        "OverlayTextures": { "type": "array", "items": { "type": "string" }, "description": "SkinUpgradeProperty_SequentialOverlayMats — `overlayTextures` asset names." },
+        "TextureMains": { "type": "array", "items": { "type": ["string", "null"] }, "description": "SkinUpgradeProperty_TextureMultiple — `mainTex` name of each inner SkinUpgradeProperty_Texture." }
       }
     },
 
@@ -1000,6 +1086,13 @@
             "PrimaryColorTag": { "type": "string", "description": "Hex string (no #) matching UIColor — used in rich-text tags.", "examples": ["FF306F"] },
             "TextColorTag": { "type": "string", "description": "Hex string (no #) matching TextColor." },
             "DefaultUpgradeType": { "type": "string", "description": "C# class name of the character's default PlayerUpgrade (movement ability, e.g. AirDashUpgrade for Glider)." },
+            "DefaultUpgrade": { "type": "string", "description": "Upgrade key of the innate ability (`Character.DefaultUpgrade`); resolves in `upgrades` (which carries `DefaultUpgradeOf` back to this character)." },
+            "ThirdAbilityNameID": { "type": "string", "description": "Character-select third ability: TextBlocks key for the name. Absent when the character has no third ability." },
+            "ThirdAbilityName": { "type": "string", "description": "Resolved third-ability name (block 0)." },
+            "ThirdAbilityDescriptionID": { "type": "string", "description": "TextBlocks key for the third-ability description." },
+            "ThirdAbilityDescriptionIndex": { "type": "integer", "description": "Block index used for the description." },
+            "ThirdAbilityDescription": { "type": "string", "description": "Resolved third-ability description (rich-text intact)." },
+            "ThirdAbilityIcon": { "$ref": "#/$defs/DIcon" },
             "DefaultSkinType": { "type": "string", "description": "C# class name of the character's default SkinUpgrade." },
             "Quips": {
               "type": "array",
@@ -1281,6 +1374,11 @@
         "Flags": { "type": "string", "description": "LevelFlags flag-enum stringified (e.g. \"SpawnCombatResource, SpawnParkourResource, GravityFarm\")." },
         "Color": { "type": "string", "description": "Theme color as Unity RGBA(r, g, b, a) string." },
         "LockRegion": { "type": "boolean" },
+        "MinThreat": { "type": "integer", "description": "Lowest threat tier missions in this region roll at." },
+        "MaxThreat": { "type": "integer", "description": "Highest threat tier missions in this region roll at (default 7)." },
+        "ExcludeFromOvertimeAssignment": { "type": "boolean", "description": "Region is skipped when picking weekly overtime assignments." },
+        "Planet": { "type": "string", "description": "Key into `planets`." },
+        "DefaultModifiers": { "type": "array", "description": "Keys into `missionModifiers` always applied to missions here.", "items": { "type": "string" } },
         "Icon": { "$ref": "#/$defs/DIcon" },
         "Scenes": {
           "type": "array",
@@ -1369,8 +1467,8 @@
       "description": "One hazard or interactable prefab (see `worldObjects`).",
       "required": ["Category", "Source", "Components"],
       "properties": {
-        "Category": { "enum": ["hazard", "interactable"] },
-        "Source": { "type": "string", "description": "Where the prefab was found: a Global field (\"Global.HornetPrefab\", \"Global.laserBullets[2]\"), \"ScrapperGear.grapplePolePrefab\", or the component/ScriptableObject type it was discovered by." },
+        "Category": { "enum": ["hazard", "interactable", "hub", "boss"], "description": "`hub` / `boss` entries come from scene instances (Hub, RhomProc scenes loaded additively after the main dump) rather than prefabs." },
+        "Source": { "type": "string", "description": "Where the prefab was found: a Global field (\"Global.HornetPrefab\", \"Global.laserBullets[2]\"), \"ScrapperGear.grapplePolePrefab\", the component/ScriptableObject type it was discovered by, \"scene:<SceneName>\" for scene instances, or \"Rhombomination.<attack>.<field>\" for boss attack projectile prefabs." },
         "Components": { "type": "array", "items": { "$ref": "#/$defs/EnemyPartComponent" }, "description": "Gameplay components: ObjectTarget subclasses, ClientCollectable subclasses (HealingCollectable healAmount/canOverheal, ResourceCollectable amount/isAmountAffectedByDifficulty, AmmoCollectable ammo), LaserBullet, RocketSalvoBullet/MortarBullet, VolatileExplosive, DamageOnHit (Min/Max(Player)Damage over Min/MaxSpeed), OverclockedExplosion, AntigravityField, LaunchPad, SafetyBubble, GrapplePole. AcidFlyTrapData is a single pseudo-component with extra `BulletScale` / `BulletExplosionSize` arrays (per-glob GlobData)." }
       }
     },
@@ -1389,10 +1487,26 @@
               { "type": ["number", "boolean", "string"] },
               { "type": "array", "items": { "type": ["number", "string"] } },
               { "$ref": "#/$defs/MinMax" },
-              { "$ref": "#/$defs/DamageInfo" }
+              { "$ref": "#/$defs/DamageInfo" },
+              { "$ref": "#/$defs/PlayerScaled", "description": "Rhombomination `playerHealthMultiplier`." },
+              { "type": "array", "description": "CraftingInteractable `cost` (SkillPointCrafter).", "items": { "type": "object", "required": ["resource", "count"], "properties": { "resource": { "type": "string", "description": "`resources` key." }, "count": { "type": "integer" } } } },
+              { "$ref": "#/$defs/BossAttack" }
             ]
           }
         }
+      }
+    },
+    "BossAttack": {
+      "type": "object",
+      "description": "One Rhombomination attack config (nested Attack subclass): weight, cooldown, _maxActiveAttacks(+PerPlayer x players), plus subclass fields; prefab refs (`projectile`, `dronePrefab`, `bulletPrefab`, `explosionEffect`) are prefab names (`worldObjects` keys when they carry gameplay components).",
+      "required": ["Subclass"],
+      "properties": { "Subclass": { "type": "string" } },
+      "additionalProperties": {
+        "anyOf": [
+          { "type": ["number", "boolean", "string"] },
+          { "$ref": "#/$defs/MinMax" },
+          { "$ref": "#/$defs/DamageInfo" }
+        ]
       }
     },
     "DamageInfo": {
@@ -1563,7 +1677,8 @@
           "description": "One weight per threat tier, in `threats` key order (8 tiers as of 1.9).",
           "minItems": 1,
           "items": { "type": "number" }
-        }
+        },
+        "Additive": { "type": "boolean", "description": "`ThreatModifierProfile.Apply(value, threat)`: true → `Clamp01(value + Threats[threat])` (chance offsets); false → `value * Threats[threat]` (multiplier)." }
       }
     },
     "CustomWave": {
@@ -1775,7 +1890,6 @@
         "BaseXPForSideObjective": { "type": "integer" },
         "BaseResourcesForSideObjective": { "type": "integer" },
         "ResourceAmountMultiplier": { "$ref": "#/$defs/ThreatValues", "description": "Per-threat reward multiplier (resources and mission XP)." },
-        "SurvivalBonusScrip": { "$ref": "#/$defs/ThreatValues" },
         "IntensityScripAndXPMultiplier": { "type": "array", "description": "IntensityModifier: index = intensity (0 low, 1 medium, 2 high).", "items": { "type": "number" } },
         "EnemyUpgradeDropChances": {
           "type": "object",
@@ -2014,6 +2128,7 @@
         "UpgradeRareResourceCost": { "type": "integer", "description": "Base rare-resource cost." },
         "CleanseCost": { "type": "integer", "description": "Ouroboros cleanse cost (paid in `ourosample`)." },
         "CraftNewSaxoniteCost": { "type": "integer", "description": "Saxonite price for \"craft new\" rolls at this rarity." },
+        "CraftNewNormalResourceCost": { "type": "integer", "description": "Base count N for the crafting ingredient line items at this rarity (see `crafting.ByRarity`)." },
         "AdditionalUpgradeCost": {
           "type": "array",
           "description": "Extra resources required beyond scrip+rare. Empty for most rarities.",
@@ -2080,15 +2195,31 @@
 
     "Crafting": {
       "type": "object",
-      "description": "Master crafting price table. Singleton — sourced from the `CraftingWindow` MonoBehaviour prefab's private cost arrays.",
+      "description": "Master crafting price table. Singleton — sourced from the `CraftingWindow` MonoBehaviour prefab's private cost arrays. The top-level arrays are unpatched templates: `CraftingWindow.SetRarity` rewrites them per selected rarity (see `ByRarity` for the resolved costs). With N = `rarities[r].CraftNewNormalResourceCost`, S = `rarities[r].CraftNewSaxoniteCost`: entry [0] of every Random/Weapon/Upgrade array becomes `rarities[r].ScrapResource` (count unchanged); RandomCraftCost entries [1..len-2] = ceil(N×0.65); RandomNewCraftCost entries [1..len-2] = N, last (saxonite) = S; WeaponNewCraftCost entries [1..len-2] = ceil(N×1.4), last = ceil(S×1.4); other counts stay as in the template.",
       "properties": {
-        "MinLevelToAccessCrafting": { "type": "integer", "description": "Player level required to access the crafting bench (10 in source)." },
+        "MinLevelToAccessCrafting": { "type": "integer", "description": "Player level required to access the crafting bench (`CraftingWindow.MinLevelToAccessCrafting`)." },
         "RandomCraftCost": { "type": "array", "description": "Roll a fully-random new upgrade.", "items": { "$ref": "#/$defs/DUnlockCost" } },
         "WeaponCraftCost": { "type": "array", "description": "Roll a random upgrade for a specific gear.", "items": { "$ref": "#/$defs/DUnlockCost" } },
         "UpgradeCraftCost": { "type": "array", "description": "Duplicate an existing upgrade.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "RandomNewCraftCost": { "type": "array", "description": "Random roll restricted to upgrades not yet owned (template).", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "WeaponNewCraftCost": { "type": "array", "description": "Gear-specific roll restricted to upgrades not yet owned (template).", "items": { "$ref": "#/$defs/DUnlockCost" } },
         "UpcraftToRareCost": { "type": "array", "description": "Tier-up: Standard → Rare.", "items": { "$ref": "#/$defs/DUnlockCost" } },
         "UpcraftToEpicCost": { "type": "array", "description": "Rare → Epic.", "items": { "$ref": "#/$defs/DUnlockCost" } },
-        "UpcraftToExoticCost": { "type": "array", "description": "Epic → Exotic.", "items": { "$ref": "#/$defs/DUnlockCost" } }
+        "UpcraftToExoticCost": { "type": "array", "description": "Epic → Exotic.", "items": { "$ref": "#/$defs/DUnlockCost" } },
+        "ByRarity": {
+          "type": "object",
+          "description": "Resolved per-rarity costs (templates patched exactly as `CraftingWindow.SetRarity` does). Keyed by rarity name; only rarities selectable in the crafting window (standard, rare, epic, exotic).",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "RandomCraftCost": { "type": "array", "items": { "$ref": "#/$defs/DUnlockCost" } },
+              "RandomNewCraftCost": { "type": "array", "items": { "$ref": "#/$defs/DUnlockCost" } },
+              "WeaponCraftCost": { "type": "array", "items": { "$ref": "#/$defs/DUnlockCost" } },
+              "WeaponNewCraftCost": { "type": "array", "items": { "$ref": "#/$defs/DUnlockCost" } },
+              "UpgradeCraftCost": { "type": "array", "items": { "$ref": "#/$defs/DUnlockCost" } }
+            }
+          }
+        }
       }
     },
 

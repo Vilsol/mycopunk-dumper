@@ -212,6 +212,11 @@ partial class Plugin
             Flags = w.Flags.ToString(),
             Color = w.Color.ToString(),
             LockRegion = w.LockRegion,
+            MinThreat = w.MinThreat,
+            MaxThreat = w.MaxThreat,
+            ExcludeFromOvertimeAssignment = w.ExcludeFromOvertimeAssignment,
+            Planet = w.Planet != null ? w.Planet.name : null,
+            DefaultModifiers = w.DefaultModifiers?.Where(m => m != null).Select(m => m.ID.ToString()).ToArray(),
             Icon = BuildIcon(w.Icon)
         };
 

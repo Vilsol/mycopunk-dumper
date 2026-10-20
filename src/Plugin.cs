@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,6 +48,7 @@ public partial class Plugin : BaseUnityPlugin
     private static readonly SortedDictionary<string, GridProfileEntry> GridProfileMap = new();
     private static readonly SortedDictionary<string, PlanetEntry> PlanetMap = new();
     private static readonly SortedDictionary<string, FulfillmentEntry> FulfillmentMap = new();
+    private static readonly SortedDictionary<string, Entitlement> EntitlementMap = new();
 
     internal static BepInEx.Logging.ManualLogSource Log;
 
@@ -57,7 +59,7 @@ public partial class Plugin : BaseUnityPlugin
         Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} is loaded!");
     }
 
-    private void Start()
+    private IEnumerator Start()
     {
         Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} is started!");
 
@@ -98,13 +100,17 @@ public partial class Plugin : BaseUnityPlugin
         UpgradePresetMap.Clear();
         GridProfileMap.Clear();
         PlanetMap.Clear();
+        EntitlementMap.Clear();
         NativeConverter.InstanceRefs.Clear();
 
         if (Global.Instance == null)
         {
             Logger.LogError("Global.Instance is null; aborting dump");
-            return;
+            yield break;
         }
+
+        // RockManager isn't referenced at startup; loading it also pulls its rock UpgradePresets into memory.
+        _ = RockManager.Instance;
 
         // Build instance-ID → ref-key index BEFORE serialization so NativeConverter can rewrite
         // {"instanceID":N} blobs in JsonUtility output. We index every type whose semantic key
@@ -268,7 +274,7 @@ public partial class Plugin : BaseUnityPlugin
         {
             if (tp == null || ThreatProfileMap.ContainsKey(tp.name)) continue;
             var threats = GetPrivateField<float[]>(tp.ThreatModifier, "threats");
-            ThreatProfileMap[tp.name] = new ThreatProfile { Name = tp.name, Threats = threats };
+            ThreatProfileMap[tp.name] = new ThreatProfile { Name = tp.name, Threats = threats, Additive = GetPrivateField<bool>(tp, "additive") };
             NativeConverter.InstanceRefs[tp.GetInstanceID()] = "threatProfile:" + tp.name;
         }
 
@@ -444,7 +450,27 @@ public partial class Plugin : BaseUnityPlugin
         foreach (var pl in UnityEngine.Resources.FindObjectsOfTypeAll<Planet>())
         {
             if (pl == null || string.IsNullOrEmpty(pl.name) || PlanetMap.ContainsKey(pl.name)) continue;
-            PlanetMap[pl.name] = new PlanetEntry { BiomeData = pl.PlanetBiomeData };
+            PlanetMap[pl.name] = new PlanetEntry
+            {
+                NameID = GetPrivateField<string>(pl, "nameID"),
+                Name = pl.Name,
+                OverrideSubtitleID = GetPrivateField<string>(pl, "overrideSubtitleID") is { Length: > 0 } sid ? sid : null,
+                Subtitle = pl.Subtitle,
+                Icon = BuildIcon(pl.Icon),
+                MinLevel = pl.MinLevel,
+                DailyModifierRegion = pl.DailyModifierRegion != null ? pl.DailyModifierRegion.ID.ToString() : null,
+                IsHazardous = pl.IsHazardous,
+                BiomeData = pl.PlanetBiomeData
+            };
+            NativeConverter.InstanceRefs[pl.GetInstanceID()] = "planet:" + pl.name;
+        }
+
+        // EntitlementPack — DLC/supporter packs.
+        foreach (var ep in Global.Instance.EntitlementPacks ?? Array.Empty<EntitlementPack>())
+        {
+            if (ep == null || EntitlementMap.ContainsKey(ep.name)) continue;
+            EntitlementMap[ep.name] = BuildEntitlement(ep);
+            NativeConverter.InstanceRefs[ep.GetInstanceID()] = "entitlement:" + ep.name;
         }
 
         // Dialogue catalog + per-trigger probabilities.
@@ -551,6 +577,8 @@ public partial class Plugin : BaseUnityPlugin
         {
             ProcessUpgrades(character);
             var apiName = character.Info?.APIName ?? character.GetType().Name;
+            // Innate ability isn't in Info.Upgrades; dump it against its character.
+            if (character.DefaultUpgrade != null) ProcessUpgrade(character.DefaultUpgrade, character).DefaultUpgradeOf = apiName;
             if (!CharMap.ContainsKey(apiName)) CharMap[apiName] = BuildCharacter(character);
         }
 
@@ -562,7 +590,6 @@ public partial class Plugin : BaseUnityPlugin
         Logger.LogInfo($"Found {UpgradeMap.Count} upgrades, {GearMap.Count} gears, {CharMap.Count} characters, {ResourceMap.Count} resources, {DirectiveMap.Count} directives, {MissionMap.Count} missions, {ObjectiveMap.Count} objectives, {RegionMap.Count} regions, {EnemyMap.Count} enemies, {StatusEffectMap.Count} status effects, {StackMap.Count} stacks, {ThreatMap.Count} threats, {MissionModifierMap.Count} mission modifiers, {LootPoolMap.Count} loot pools, {LocalizationMap.Count} localization keys, {AuthItemMap.Count} auth items, {PatternPathMap.Count} patterns, {ThreatProfileMap.Count} threat profiles, {CustomWaveMap.Count} waves, {CollectableMap.Count} collectables, {EnemyGroupMap.Count} enemy groups, {RarityMap.Count} rarities, {MissionContainerMap.Count} mission containers, {EncounterMap.Count} encounters, {QuipMap.Count} quips, dialogue={(DialogueEntry?.Exchanges?.Count ?? 0)}, player={(PlayerBaseEntry != null)}");
 
         var outputPath = Path.Combine(Paths.GameRootPath, "data.json");
-        using var writer = new StreamWriter(outputPath, false);
         string gameVersion = null, buildId = null;
         try { gameVersion = Global.Version; } catch (Exception ex) { Logger.LogWarning($"Global.Version failed: {ex.Message}"); }
         try { buildId = Global.BuildID; } catch (Exception ex) { Logger.LogWarning($"Global.BuildID failed: {ex.Message}"); }
@@ -623,6 +650,8 @@ public partial class Plugin : BaseUnityPlugin
                 .Where(d => d != null).Select(BuildDirectiveManager).FirstOrDefault(),
             gridProfiles = GridProfileMap,
             fulfillments = FulfillmentMap,
+            entitlements = EntitlementMap,
+            rocks = BuildRocks(),
             planets = PlanetMap,
             difficulty = BuildDifficulty(),
             economy = BuildEconomy(),
@@ -675,8 +704,21 @@ public partial class Plugin : BaseUnityPlugin
         var jtokenWriter = new Newtonsoft.Json.Linq.JTokenWriter();
         JsonSerializer.Create(settings).Serialize(jtokenWriter, dump);
         var root = jtokenWriter.Token;
+
+        yield return LoadDumpScenes();
+        try
+        {
+            AddSceneObjects(dump.worldObjects);
+            root["worldObjects"] = Newtonsoft.Json.Linq.JToken.FromObject(dump.worldObjects, JsonSerializer.Create(settings));
+        }
+        catch (Exception ex) { Logger.LogError($"Scene world objects failed: {ex}"); }
+
         InjectPlainTextSiblings(root);
-        writer.Write(root.ToString(Formatting.None));
+        // Write-then-rename so the dump task never sees a partial file.
+        var tmpPath = outputPath + ".tmp";
+        File.WriteAllText(tmpPath, root.ToString(Formatting.None));
+        if (File.Exists(outputPath)) File.Delete(outputPath);
+        File.Move(tmpPath, outputPath);
 
         Logger.LogInfo($"Wrote {outputPath}");
     }

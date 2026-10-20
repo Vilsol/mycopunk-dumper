@@ -20,6 +20,7 @@ public class RarityEntry
     public int UpgradeRareResourceCost;  // base rare-resource cost
     public int CleanseCost;              // Ouroboros cleanse cost (in `ourosample` resource)
     public int CraftNewSaxoniteCost;     // saxonite price for "craft new" rolls
+    public int CraftNewNormalResourceCost; // per-ingredient count base for crafting (see `crafting.ByRarity`)
     public Upgrade.DUnlockCost[] AdditionalUpgradeCost; // extra ingredients beyond scrip+rare
 
     // Cross-references

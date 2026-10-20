@@ -29,6 +29,7 @@ public class Upgrade {
     public DUnlockCost[] UnlockCost;
     public DUnlockCost[] AdditionalUnlockCost;
     public List<DUpgradeable> ApplicableTo;
+    public string DefaultUpgradeOf;   // character APIName when this is that character's innate ability (Character.DefaultUpgrade)
 
     /// <summary>
     /// Cosmetic-specific data — populated only when <see cref="UpgradeType"/> == <c>"Cosmetic"</c>
@@ -77,6 +78,16 @@ public class Upgrade {
         // Numeric stats with already-typed min/max won't usually appear here since their value
         // is just a sample from the existing range — only categorical rolls leave traces.
         public SortedDictionary<string, SortedDictionary<string, string[]>> RolledValuesByUpgradable;
+        // Same as StatsByUpgradable / ModifyTextByUpgradable but evaluated on a turbocharged instance;
+        // only present for upgradables where the output differs from the normal pass.
+        public SortedDictionary<string, StatData[]> StatsByUpgradableTurbocharged;
+        public SortedDictionary<string, string> ModifyTextByUpgradableTurbocharged;
+        // GetTurbochargedInfo — the "When turbocharged:" hover lines shown before turbocharging.
+        public SortedDictionary<string, string> TurbochargedInfoByUpgradable;
+        // UpgradeProperty_UpgradeFlag / _PlayerUpgradeFlag: the flag int resolved against the enum
+        // the game reads it with (e.g. "MycoGearUpgradeFlags" → ["InfectOnlyInCombat"]).
+        public string FlagEnum;
+        public string[] FlagNames;
     }
 
     public class DUnlockCost {
@@ -97,7 +108,8 @@ public class Upgrade {
         public bool ColorIcon;                   // whether the icon is tinted by the skin color at render time
         public bool ChangeHueIfNoModifiersApplied;
         public bool OverridesPattern;            // true if SkinUpgrade.overridePattern is set (skin tree uses a non-default HexMapProfile)
-        public string SkinType;                  // cosmetic slot: "Skin" | "Crab" | "Flair" | "Coat" | "None"
+        public string SkinType;                  // cosmetic slot: "Skin" | "Crab" | "Flair" | "Motion" | "None"
+        public string RequiredEntitlement;       // key into `entitlements`; skin is only usable when that pack is owned
         public string SkinTypeName;              // localized slot label; note the game shows "Hat" instead of "Crab" when the gear is a Character
         public bool HasVfx;                      // any VFX-spawning property (VFXCrab, VFXCustomProp, VFXMod, GunCrab, GunCrab_List)
         public bool HasCrab;                     // any GunCrab-derived property (gun has a crab/eye/pump/roach companion)
@@ -229,5 +241,29 @@ public class Upgrade {
         public string CharacterModelArmL;        // SkinnedMeshRenderer mesh asset name
         public string CharacterModelArmR;
         public string CharacterModelThirdPerson;
+
+        // SkinUpgradeProperty_Hat / _MultiHat
+        public string HatPrefab;
+        public string HatMesh;
+        public string[] HatMeshes;               // _MultiHat.meshes
+
+        // SkinUpgradeProperty_Specular / _NegativeSpecularColor
+        public string SpecularColor;             // RGBA(HDR)
+        public float? SpecularShadowOverride;    // _Specular.shadowSpecular when overridden
+
+        // SkinUpgradeProperty_Reload / _SwarmGun_Reload (Motion skins)
+        public string ReloadAnimation;           // AnimationClip name
+        public string ReloadLoopAnimation;       // _SwarmGun_Reload only
+        public string ReloadEndAnimation;
+
+        // SkinUpgradeProperty_RarityColoring: hardcoded roll (rand <= .52 Standard, .77 Rare, .92 Epic, else Exotic)
+        // tinting the skin with that rarity's lightColor.
+        public SortedDictionary<string, float> RarityColoringWeights;
+
+        // SkinUpgradeProperty_SequentialOverlayMats
+        public string[] OverlayTextures;
+
+        // SkinUpgradeProperty_TextureMultiple — mainTex of each inner _Texture
+        public string[] TextureMains;
     }
 }
