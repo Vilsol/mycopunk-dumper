@@ -35,7 +35,7 @@ partial class Plugin
             g.UnlockCost = info.UnlockCost.Select(c => new Upgrade.DUnlockCost
             {
                 Count = c.count,
-                Resource = c.resource?.Name,
+                Resource = StripRichText(c.resource?.Name),
                 ResourceID = c.resource?.ID
             }).ToArray();
         }
@@ -163,7 +163,7 @@ partial class Plugin
                 entry.Resource = new Upgrade.DUnlockCost
                 {
                     Count = lur.Resource.count,
-                    Resource = lur.Resource.resource.Name,
+                    Resource = StripRichText(lur.Resource.resource.Name),
                     ResourceID = lur.Resource.resource.ID
                 };
                 break;

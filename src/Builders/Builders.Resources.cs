@@ -42,13 +42,15 @@ partial class Plugin
 
             var scrap = GetPrivateField<PlayerResource>(r, "scrapResource");
             var icon = GetPrivateField<UnityEngine.Sprite>(r, "icon");
+            var rd = (RarityData)r;
             var entry = new RarityEntry
             {
                 Name = name,
-                LocalizedName = GetPrivateField<string>(r, "_localizedName"),
-                ColorTag = GetPrivateField<string>(r, "_colorTag"),
-                BoostedName = GetPrivateField<string>(r, "_boostedName"),
-                TurbochargedName = GetPrivateField<string>(r, "_turbochargedName"),
+                LocalizedName = rd.Name,
+                ColorTag = rd.ColorTag,
+                // BoostedName's getter checks _turbochargedName, so it must be read first.
+                BoostedName = rd.BoostedName,
+                TurbochargedName = rd.TurbochargedName,
                 UpgradeScripCost = GetPrivateField<int>(r, "upgradeScripCost"),
                 UpgradeRareResourceCost = GetPrivateField<int>(r, "upgradeRareResourceCost"),
                 CleanseCost = GetPrivateField<int>(r, "cleanseCost"),
@@ -72,7 +74,7 @@ partial class Plugin
                     list.Add(new Upgrade.DUnlockCost
                     {
                         Count = GetPrivateField<int>(rc, "count"),
-                        Resource = res?.Name,
+                        Resource = StripRichText(res?.Name),
                         ResourceID = res?.ID
                     });
                 }
@@ -109,7 +111,7 @@ partial class Plugin
                 list.Add(new Upgrade.DUnlockCost
                 {
                     Count = GetPrivateField<int>(rc, "count"),
-                    Resource = res?.Name,
+                    Resource = StripRichText(res?.Name),
                     ResourceID = res?.ID
                 });
             }
@@ -144,7 +146,7 @@ partial class Plugin
                 if (tpl == null) return null;
                 var arr = tpl.Select(c => new Upgrade.DUnlockCost { Count = c.Count, Resource = c.Resource, ResourceID = c.ResourceID }).ToArray();
                 if (arr.Length == 0) return arr;
-                arr[0].Resource = scrap?.Name;
+                arr[0].Resource = StripRichText(scrap?.Name);
                 arr[0].ResourceID = scrap?.ID;
                 if (mid.HasValue) for (int k = 1; k < arr.Length - 1; k++) arr[k].Count = mid.Value;
                 if (last.HasValue && arr.Length > 1) arr[^1].Count = last.Value;

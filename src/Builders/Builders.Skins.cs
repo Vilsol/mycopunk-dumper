@@ -482,15 +482,16 @@ partial class Plugin
             }
 
             // Turbocharge / Ouroboros costs (per-rarity formulas, computed by the game)
+            upgradeOut.CanTurbocharge = CanTurbocharge(up);
             try
             {
-                var tc = up.GetTurbochargeCost();
+                var tc = upgradeOut.CanTurbocharge ? up.GetTurbochargeCost() : null;
                 if (tc != null && tc.Count > 0)
                 {
                     upgradeOut.TurbochargeCost = tc.Select(c => new Upgrade.DUnlockCost
                     {
                         Count = c.count,
-                        Resource = c.resource?.Name,
+                        Resource = StripRichText(c.resource?.Name),
                         ResourceID = c.resource?.ID
                     }).ToArray();
                 }
@@ -505,7 +506,7 @@ partial class Plugin
                     upgradeOut.OuroborosCost = oc.Select(c => new Upgrade.DUnlockCost
                     {
                         Count = c.count,
-                        Resource = c.resource?.Name,
+                        Resource = StripRichText(c.resource?.Name),
                         ResourceID = c.resource?.ID
                     }).ToArray();
                 }
@@ -542,7 +543,7 @@ partial class Plugin
                 upgradeOut.UnlockCost[j] = new Upgrade.DUnlockCost
                 {
                     Count = unlockCost[j].count,
-                    Resource = unlockCost[j].resource?.Name,
+                    Resource = StripRichText(unlockCost[j].resource?.Name),
                     ResourceID = unlockCost[j].resource?.ID
                 };
             }
@@ -555,7 +556,7 @@ partial class Plugin
                     upgradeOut.AdditionalUnlockCost[j] = new Upgrade.DUnlockCost
                     {
                         Count = up.additionalUnlockCost[j].count,
-                        Resource = up.additionalUnlockCost[j].resource?.Name,
+                        Resource = StripRichText(up.additionalUnlockCost[j].resource?.Name),
                         ResourceID = up.additionalUnlockCost[j].resource?.ID
                     };
                 }
@@ -769,7 +770,16 @@ partial class Plugin
             Log.LogWarning($"ModifyProperties failed for {ownerKey} property {prop.GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
         }
 
-        CollectTurbochargedStats(dp, prop, upgradable, upgradableApiName, makeInstance, collected);
+        if (makeInstance(0) is { } probe && CanTurbocharge(probe.Upgrade))
+            CollectTurbochargedStats(dp, prop, upgradable, upgradableApiName, makeInstance, collected);
+    }
+
+    // UpgradeInstance.CanTurbocharge minus its exotic progression check (needs PlayerData).
+    private static bool CanTurbocharge(global::Upgrade up)
+    {
+        if (up.Rarity > Rarity.Exotic) return false;
+        if (up.Rarity == Rarity.Exotic) return (up.Flags & global::Upgrade.UpgradeFlags.CanTurbocharge) != 0;
+        return !up.IsSkin() && (up.Flags & (global::Upgrade.UpgradeFlags.NoRandom | global::Upgrade.UpgradeFlags.CantBoost)) == 0;
     }
 
     // Second pass with the instance's Turbocharged bit set directly (the IsTurbocharged setter

@@ -10,10 +10,10 @@ namespace MycopunkDumper;
 public class RarityEntry
 {
     public string Name;                  // canonical key: "standard", "rare", "epic", "exotic", "boosted", "turbocharged"
-    public string LocalizedName;         // _localizedName (TextBlocks key)
-    public string ColorTag;              // _colorTag (rich-text color tag prefix)
-    public string BoostedName;           // _boostedName (TextBlocks key for the boosted variant label)
-    public string TurbochargedName;      // _turbochargedName
+    public string LocalizedName;         // RarityData.Name (localized display name)
+    public string ColorTag;              // RarityData.ColorTag (hex RGB of `color`)
+    public string BoostedName;           // RarityData.BoostedName, e.g. "Rare / Boosted"
+    public string TurbochargedName;      // RarityData.TurbochargedName, e.g. "Exotic / Turbocharged"
 
     // Pricing — the headline numbers a calculator needs.
     public int UpgradeScripCost;         // base scrip cost to unlock at this rarity

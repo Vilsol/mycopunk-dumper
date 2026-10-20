@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using BepInEx;
+using HarmonyLib;
 using Newtonsoft.Json;
 
 namespace MycopunkDumper;
@@ -51,6 +52,12 @@ public partial class Plugin : BaseUnityPlugin
     private static readonly SortedDictionary<string, Entitlement> EntitlementMap = new();
 
     internal static BepInEx.Logging.ManualLogSource Log;
+
+    private static bool ShowExtraInfoPrefix(ref bool __result)
+    {
+        __result = true;
+        return false;
+    }
 
     private void Awake()
     {
@@ -566,6 +573,12 @@ public partial class Plugin : BaseUnityPlugin
             MissionModifierMap[key] = BuildMissionModifier(m);
         }
 
+        // Range strings (StatData.GetRangeValueString) are only formatted while the in-game
+        // "show extra info" key is held; force it on so min/max match what players see.
+        var harmony = new HarmonyLib.Harmony(MyPluginInfo.PLUGIN_GUID);
+        harmony.Patch(AccessTools.Method(typeof(Pigeon.HoverInfo), nameof(Pigeon.HoverInfo.ShowExtraInfo)),
+            prefix: new HarmonyMethod(typeof(Plugin), nameof(ShowExtraInfoPrefix)));
+
         foreach (var upgradable in Global.Instance.AllGear)
         {
             ProcessUpgrades(upgradable);
@@ -704,6 +717,8 @@ public partial class Plugin : BaseUnityPlugin
         var jtokenWriter = new Newtonsoft.Json.Linq.JTokenWriter();
         JsonSerializer.Create(settings).Serialize(jtokenWriter, dump);
         var root = jtokenWriter.Token;
+
+        harmony.UnpatchSelf();
 
         yield return LoadDumpScenes();
         try

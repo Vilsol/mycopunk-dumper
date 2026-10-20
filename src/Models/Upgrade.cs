@@ -19,7 +19,8 @@ public class Upgrade {
     public string CollectionSource;   // "WorldPool" | "UpgradeTree" | "DropsFromSource" | "HiddenAlways" | "HiddenIfNotOwned" | "Beta" | "LevelUp" | "Resources" | "None"
     public bool IsModded;
     public string ModGUID;            // empty for vanilla
-    public DUnlockCost[] TurbochargeCost;   // resources required to turbocharge this upgrade (per Rarity formula)
+    public bool CanTurbocharge;       // game's UpgradeInstance.CanTurbocharge rules, minus the exotic progression unlock
+    public DUnlockCost[] TurbochargeCost;   // resources required to turbocharge this upgrade (per Rarity formula); null when !CanTurbocharge
     public DUnlockCost[] OuroborosCost;     // ouroscrap cost: 5 + Rarity*2
     [Newtonsoft.Json.JsonConverter(typeof(NativeConverter))]
     public HexMap Pattern;
