@@ -683,30 +683,87 @@ internal static class Probe
         _types.AppendLine();
     }
 
+    private static Type[] GameTypes() =>
+        AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => a.GetName().Name.StartsWith("Assembly-CSharp"))
+            .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
+            .ToArray();
+
+    private static SortedDictionary<string, int> CountObjects(Type baseType)
+    {
+        var seen = new SortedDictionary<string, int>();
+        foreach (var t in GameTypes())
+        {
+            if (t.IsAbstract || t.IsGenericTypeDefinition || !baseType.IsAssignableFrom(t)) continue;
+            try
+            {
+                // FindObjectsOfTypeAll(t) includes subclasses — count exact types only.
+                var n = UnityEngine.Resources.FindObjectsOfTypeAll(t).Count(o => o.GetType() == t);
+                if (n > 0) seen[t.FullName] = n;
+            }
+            catch { }
+        }
+        return seen;
+    }
+
+    // Format: "<loaded> <afterLoadAll>  <Type>". A catalog with loaded=0 is invisible to the
+    // dump's FindObjectsOfTypeAll and needs Resources.LoadAll (cf. Fulfillment).
+    // Side effect: LoadAll keeps those objects loaded for the rest of this (probe) run's dump.
     private static void EnumerateCatalogs()
     {
         var soType = typeof(UnityEngine.ScriptableObject);
-        var seen = new SortedDictionary<string, int>();
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        var before = CountObjects(soType);
+        try { UnityEngine.Resources.LoadAll<UnityEngine.ScriptableObject>(""); }
+        catch (Exception e) { _catalogs.AppendLine($"# LoadAll failed: {e.Message}"); }
+        var after = CountObjects(soType);
+
+        _catalogs.AppendLine($"# ScriptableObject catalogs ({before.Count} loaded types, {after.Count} after Resources.LoadAll)");
+        _catalogs.AppendLine("# loaded  afterLoadAll  type");
+        foreach (var kv in after.OrderByDescending(x => x.Value).ThenBy(x => x.Key))
+            _catalogs.AppendLine($"{before.GetValueOrDefault(kv.Key),6} {kv.Value,6}  {kv.Key}");
+
+        Directory.CreateDirectory(Path.Combine(_root, "catalogs"));
+        foreach (var name in after.Keys)
         {
-            Type[] types;
-            try { types = asm.GetTypes(); } catch { continue; }
-            foreach (var t in types)
+            var t = GameTypes().First(x => x.FullName == name);
+            SafeDumpFile(Path.Combine("catalogs", name + ".txt"), () =>
             {
-                if (t.IsAbstract || !soType.IsAssignableFrom(t)) continue;
-                try
+                var arr = UnityEngine.Resources.FindObjectsOfTypeAll(t).Where(o => o.GetType() == t).ToArray();
+                var s = new StringBuilder();
+                s.AppendLine($"# {name} ({arr.Length}) : {Pretty(t.BaseType)}");
+                s.AppendLine("## assets: " + string.Join(", ", arr.Select(o => o.name).OrderBy(x => x).Take(200)));
+                foreach (var o in arr.Take(3))
                 {
-                    var arr = UnityEngine.Resources.FindObjectsOfTypeAll(t);
-                    if (arr.Length > 0) seen[t.FullName] = arr.Length;
+                    s.AppendLine($"## sample '{o.name}'");
+                    try { s.AppendLine(UnityEngine.JsonUtility.ToJson(o)); } catch (Exception e) { s.AppendLine($"json failed: {e.Message}"); }
                 }
-                catch { }
-            }
+                return s.ToString();
+            });
         }
 
-        _catalogs.AppendLine($"# ScriptableObject catalogs ({seen.Count} non-empty types)");
-        _catalogs.AppendLine();
-        foreach (var kv in seen.OrderByDescending(x => x.Value).ThenBy(x => x.Key))
-            _catalogs.AppendLine($"{kv.Value,6}  {kv.Key}");
+        SafeDumpFile("components.txt", () =>
+        {
+            var s = new StringBuilder();
+            s.AppendLine("# MonoBehaviour types present on loaded objects/prefabs (exact type counts)");
+            foreach (var kv in CountObjects(typeof(UnityEngine.MonoBehaviour)).OrderByDescending(x => x.Value).ThenBy(x => x.Key))
+                s.AppendLine($"{kv.Value,6}  {kv.Key}");
+            return s.ToString();
+        });
+
+        SafeDumpFile("global-fields.txt", () =>
+        {
+            var s = new StringBuilder();
+            s.AppendLine("# Every instance field on Global (the master registry): name : type = value");
+            if (Global.Instance == null) return s.AppendLine("  (Global.Instance is null)").ToString();
+            foreach (var f in typeof(Global).GetFields(AllInstance).OrderBy(f => f.Name))
+            {
+                string v;
+                try { v = RenderValue(f.GetValue(Global.Instance)); } catch (Exception e) { v = $"<read failed: {e.Message}>"; }
+                if (v.Length > 300) v = v.Substring(0, 300) + "…";
+                s.AppendLine($"{f.Name} : {Pretty(f.FieldType)} = {v}");
+            }
+            return s.ToString();
+        });
     }
 
     private static void DiscoverSubclasses<TBase>(string label, IEnumerable<TBase> instances) where TBase : class
