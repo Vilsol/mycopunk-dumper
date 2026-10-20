@@ -16,6 +16,15 @@ public class Enemy
     public int MaxLegs;
     public float ArmChance;
     public float LegChance;
+    public int EnemyLimitSlots;
+    public float LegHealthMultiplier;            // multiplies each leg's EnemyIKLeg.healthMultiplier
+    public bool DontSpawnShellChildren;
+    public PlayerScaled<MinMax<int>> ArmCount;   // arms rolled Min..Max (inclusive) when ArmChance passes
+    public WeightedEntry[] Cores;                // keyed by `enemyParts` prefab name
+    public WeightedEntry[] Legs;
+    public WeightedEntry[] Arms;
+    public EnemyPartList[] AttachmentGroups;
+    public string[] SpawnWithEnemy;              // prefab names instantiated on the core at spawn
     public EnemyConfig Config;
     public Gear.LevelUnlockEntry[] CustomLoot;   // additional drops awarded when this enemy is killed
 }

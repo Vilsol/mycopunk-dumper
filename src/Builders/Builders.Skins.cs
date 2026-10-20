@@ -524,119 +524,129 @@ partial class Plugin
                 var count = System.Math.Min(upgradeOut.Properties.Length, up.Properties.properties.Length);
                 for (var i = 0; i < count; i++)
                 {
-                    // Multi-seed sampling: most stats are deterministic, but some properties roll
-                    // categorical values at runtime (e.g. random element from {Fire, Shock, Acid}
-                    // via `GetRandomEffect`). Run with several seeds and accumulate distinct values.
-                    const int seedCount = 16;
-                    List<StatData> firstSeedStats = null;
-                    var rolledValues = new SortedDictionary<string, SortedSet<string>>(); // statName → distinct values
-                    bool failed = false;
-                    for (int s = 0; s < seedCount && !failed; s++)
-                    {
-                        try
-                        {
-                            var enumerator = up.Properties.properties[i].GetStatData(new Pigeon.Math.Random(s), upgradable, new UpgradeInstance(up, upgradable));
-                            if (enumerator == null) { if (s == 0) { firstSeedStats = new List<StatData>(); } continue; }
+                    CollectPropertyStats(upgradeOut.Properties[i], up.Properties.properties[i], upgradable, upgradableApiName,
+                        s => new UpgradeInstance(up, upgradable) { Seed = s }, UpgradeKey(up.ID));
+                }
+            }
+        }
+    }
 
-                            var thisSeed = new List<StatData>();
-                            try
-                            {
-                                while (enumerator.MoveNext()) thisSeed.Add(enumerator.Current);
-                            }
-                            finally
-                            {
-                                (enumerator as IDisposable)?.Dispose();
-                            }
-                            if (s == 0) firstSeedStats = thisSeed;
-                            foreach (var sd in thisSeed)
-                            {
-                                if (string.IsNullOrEmpty(sd.value)) continue;
-                                if (!rolledValues.TryGetValue(sd.name, out var set))
-                                {
-                                    set = new SortedSet<string>();
-                                    rolledValues[sd.name] = set;
-                                }
-                                set.Add(sd.value);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            if (s == 0)
-                            {
-                                Log.LogWarning($"Stat eval failed for upgrade {UpgradeKey(up.ID)} property {up.Properties.properties[i].GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
-                                failed = true;
-                            }
-                            // Mid-iteration failures on later seeds are silently tolerated.
-                        }
-                    }
-                    if (failed) continue;
-                    var collected = firstSeedStats ?? new List<StatData>();
+    // Multi-seed StatData + ModifyProperties capture for one property against one upgradable.
+    private static void CollectPropertyStats(Upgrade.DProperty dp, UpgradeProperty prop, IUpgradable upgradable,
+        string upgradableApiName, Func<int, UpgradeInstance> makeInstance, string ownerKey)
+    {
+        // Multi-seed sampling: most stats are deterministic, but some properties roll
+        // categorical values at runtime (e.g. random element from {Fire, Shock, Acid}
+        // via `GetRandomEffect`). Run with several seeds and accumulate distinct values.
+        // makeInstance gets the seed too: some properties (e.g. GrowGrid) roll from
+        // UpgradeInstance.Seed, which the game's constructor randomizes.
+        const int seedCount = 16;
+        List<StatData> firstSeedStats = null;
+        var rolledValues = new SortedDictionary<string, SortedSet<string>>(); // statName → distinct values
+        bool failed = false;
+        for (int s = 0; s < seedCount && !failed; s++)
+        {
+            try
+            {
+                var enumerator = prop.GetStatData(new Pigeon.Math.Random(s), upgradable, makeInstance(s));
+                if (enumerator == null) { if (s == 0) { firstSeedStats = new List<StatData>(); } continue; }
 
-                    upgradeOut.Properties[i].StatsByUpgradable ??= new SortedDictionary<string, StatData[]>();
-                    upgradeOut.Properties[i].StatsByUpgradable[upgradableApiName] = collected.ToArray();
+                var thisSeed = new List<StatData>();
+                try
+                {
+                    while (enumerator.MoveNext()) thisSeed.Add(enumerator.Current);
+                }
+                finally
+                {
+                    (enumerator as IDisposable)?.Dispose();
+                }
+                if (s == 0) firstSeedStats = thisSeed;
+                foreach (var sd in thisSeed)
+                {
+                    if (string.IsNullOrEmpty(sd.value)) continue;
+                    if (!rolledValues.TryGetValue(sd.name, out var set))
+                    {
+                        set = new SortedSet<string>();
+                        rolledValues[sd.name] = set;
+                    }
+                    set.Add(sd.value);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (s == 0)
+                {
+                    Log.LogWarning($"Stat eval failed for upgrade {ownerKey} property {prop.GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
+                    failed = true;
+                }
+                // Mid-iteration failures on later seeds are silently tolerated.
+            }
+        }
+        if (failed) return;
+        var collected = firstSeedStats ?? new List<StatData>();
 
-                    upgradeOut.Properties[i].StatNames ??= new SortedSet<string>();
-                    foreach (var sd in collected)
-                    {
-                        var name = StripRichText(sd.name);
-                        if (!string.IsNullOrEmpty(name)) upgradeOut.Properties[i].StatNames.Add(name);
-                    }
+        dp.StatsByUpgradable ??= new SortedDictionary<string, StatData[]>();
+        dp.StatsByUpgradable[upgradableApiName] = collected.ToArray();
 
-                    // Numeric rolls already carry an exhaustive min/max range in StatData; sampling
-                    // them across seeds only yields a non-exhaustive subset of that range, so exclude
-                    // those names. What remains are genuinely categorical rolls (e.g. random element)
-                    // that have no min/max and can only be discovered by sampling.
-                    var numericNames = new HashSet<string>();
-                    foreach (var sd in collected)
-                    {
-                        if (sd.minValue != null && sd.maxValue != null) numericNames.Add(sd.name);
-                    }
+        dp.StatNames ??= new SortedSet<string>();
+        foreach (var sd in collected)
+        {
+            var name = StripRichText(sd.name);
+            if (!string.IsNullOrEmpty(name)) dp.StatNames.Add(name);
+        }
 
-                    // Record only stats with >1 observed distinct value — i.e. genuinely categorical rolls.
-                    SortedDictionary<string, string[]> nonDet = null;
-                    foreach (var (name, values) in rolledValues)
-                    {
-                        if (values.Count <= 1) continue;
-                        if (numericNames.Contains(name)) continue;
-                        nonDet ??= new SortedDictionary<string, string[]>();
-                        nonDet[name] = values.ToArray();
-                    }
-                    if (nonDet != null)
-                    {
-                        upgradeOut.Properties[i].RolledValuesByUpgradable ??= new SortedDictionary<string, SortedDictionary<string, string[]>>();
-                        upgradeOut.Properties[i].RolledValuesByUpgradable[upgradableApiName] = nonDet;
-                    }
+        // Numeric rolls already carry an exhaustive min/max range in StatData; sampling
+        // them across seeds only yields a non-exhaustive subset of that range, so exclude
+        // those names. What remains are genuinely categorical rolls (e.g. random element)
+        // that have no min/max and can only be discovered by sampling.
+        var numericNames = new HashSet<string>();
+        foreach (var sd in collected)
+        {
+            if (sd.minValue != null && sd.maxValue != null) numericNames.Add(sd.name);
+        }
 
-                    // Capture ModifyProperties output — the free-form tooltip text the game shows
-                    // after StatData lines. Some properties only contribute via this path.
-                    try
+        // Record only stats with >1 observed distinct value — i.e. genuinely categorical rolls.
+        SortedDictionary<string, string[]> nonDet = null;
+        foreach (var (name, values) in rolledValues)
+        {
+            if (values.Count <= 1) continue;
+            if (numericNames.Contains(name)) continue;
+            nonDet ??= new SortedDictionary<string, string[]>();
+            nonDet[name] = values.ToArray();
+        }
+        if (nonDet != null)
+        {
+            dp.RolledValuesByUpgradable ??= new SortedDictionary<string, SortedDictionary<string, string[]>>();
+            dp.RolledValuesByUpgradable[upgradableApiName] = nonDet;
+        }
+
+        // Capture ModifyProperties output — the free-form tooltip text the game shows
+        // after StatData lines. Some properties only contribute via this path.
+        try
+        {
+            var modText = "";
+            var inst = makeInstance(0);
+            prop.ModifyProperties(ref modText, new Pigeon.Math.Random(0), upgradable, inst);
+            if (!string.IsNullOrEmpty(modText))
+            {
+                // Strip leading newlines + carriage returns the game prepends to delimit lines.
+                var trimmed = modText.Trim('\n', '\r', ' ');
+                if (!string.IsNullOrEmpty(trimmed))
+                {
+                    dp.ModifyTextByUpgradable ??= new SortedDictionary<string, string>();
+                    dp.ModifyTextByUpgradable[upgradableApiName] = trimmed;
+                    dp.ModifyTextLines ??= new SortedSet<string>();
+                    foreach (var line in trimmed.Split('\n'))
                     {
-                        var modText = "";
-                        var inst = new UpgradeInstance(up, upgradable);
-                        up.Properties.properties[i].ModifyProperties(ref modText, new Pigeon.Math.Random(0), upgradable, inst);
-                        if (!string.IsNullOrEmpty(modText))
-                        {
-                            // Strip leading newlines + carriage returns the game prepends to delimit lines.
-                            var trimmed = modText.Trim('\n', '\r', ' ');
-                            if (!string.IsNullOrEmpty(trimmed))
-                            {
-                                upgradeOut.Properties[i].ModifyTextByUpgradable ??= new SortedDictionary<string, string>();
-                                upgradeOut.Properties[i].ModifyTextByUpgradable[upgradableApiName] = trimmed;
-                                upgradeOut.Properties[i].ModifyTextLines ??= new SortedSet<string>();
-                                foreach (var line in trimmed.Split('\n'))
-                                {
-                                    var stripped = StripRichText(line);
-                                    if (!string.IsNullOrEmpty(stripped)) upgradeOut.Properties[i].ModifyTextLines.Add(stripped);
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.LogWarning($"ModifyProperties failed for {UpgradeKey(up.ID)} property {up.Properties.properties[i].GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
+                        var stripped = StripRichText(line);
+                        if (!string.IsNullOrEmpty(stripped)) dp.ModifyTextLines.Add(stripped);
                     }
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning($"ModifyProperties failed for {ownerKey} property {prop.GetType().Name} on {upgradableApiName}: {ex.GetType().Name}: {ex.Message}");
         }
     }
 }

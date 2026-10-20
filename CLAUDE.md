@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A BepInEx 5 plugin for the Unity game **Mycopunk** that dumps every in-game upgrade definition to `data.json`. Not a generic mod template despite the README — the README is leftover boilerplate from `MycopunkModTemplate`.
+A BepInEx 5 plugin for the Unity game **Mycopunk** that dumps the game's catalogs (upgrades, gears, missions, enemies, difficulty/economy tables, …) to `data.json`. `README.md` has the consumer-facing section overview.
 
 ## Shell quirks
 
@@ -21,6 +21,7 @@ mise run clean
 mise run deploy      # release + copy DLL into $MYCOPUNK_DIR/BepInEx/plugins
 mise run dump        # deploy + headless launch via Steam URI + wait for data.json (~24s end-to-end)
 mise run probe       # like dump but with the probe enabled (writes $MYCOPUNK_DIR/probe/)
+mise run coverage    # after probe: list SO catalogs / Global fields / prefab components the dumper never references
 mise run copy-dump   # copy $MYCOPUNK_DIR/data.json into the repo
 mise run decompile   # re-decompile Assembly-CSharp.dll into ./decompiled/ (run after game updates)
 mise run diff <old> <new> [section[/key]]  # side-by-side dump diff via tools/diff.py — strips noisy `instanceID`/`ID` keys
@@ -44,7 +45,7 @@ The csproj `<HintPath>` references `$MYCOPUNK_DIR/Mycopunk_Data/Managed/Assembly
 
 `data.json` is written to `Paths.GameRootPath` (= the game install dir under Proton, visible at `$MYCOPUNK_DIR/data.json` on Linux).
 
-There are no tests, no lint config, and no CI.
+There are no tests and no lint config. CI (`.github/workflows/release.yml`) only runs the release pipeline — see Autonomous CI below.
 
 ## Architecture
 
@@ -63,16 +64,16 @@ src/
     NativeConverter.cs   # Newtonsoft converter for Unity-native types
 ```
 
-The `Plugin` class is `partial`. Every `Build<X>` and helper lives in `src/Builders/Builders.<Section>.cs` (Common, Skins, Gears, Resources, Missions, Enemies, Combat, Directives, Misc). The static field maps + `Awake/Start` stay in `src/Plugin.cs` itself. The same trick applies to `SkinRenderer` + nested `RenderDriver`, split across `src/Rendering/SkinRenderer.{Setup,Frame,Teardown,Helpers}.cs` plus the orchestration `RenderAll` coroutine in `src/SkinRenderer.cs`.
+The `Plugin` class is `partial`. Every `Build<X>` and helper lives in `src/Builders/Builders.<Section>.cs` (Common, Skins, Gears, Resources, Missions, Enemies, Combat, Directives, Misc, Scaling, WorldObjects). The static field maps + `Awake/Start` stay in `src/Plugin.cs` itself. The same trick applies to `SkinRenderer` + nested `RenderDriver`, split across `src/Rendering/SkinRenderer.{Setup,Frame,Teardown,Helpers}.cs` plus the orchestration `RenderAll` coroutine in `src/SkinRenderer.cs`.
 
 - **`src/Plugin.cs`** — `Start()` iterates `Global.Instance.AllGear` + `Global.Instance.Characters` + `Global.Instance` itself, calling `ProcessUpgrades` on each. Upgrades are deduplicated by `UpgradeKey(up.ID)` into a static `SortedDictionary<string, Upgrade>`. Per-upgradable data (`ApplicableTo` entries and `StatsByUpgradable` per property) is recorded on every pass, not just the first. Result is serialized via Newtonsoft.Json.
 - **`src/Builders/Builders.Common.cs`** — shared helpers: `GetPrivateField` (walks the type hierarchy), `BuildIcon`, `LocText`, `UpgradeKey`, `PrettifyPropertyType`, `StripRichText`, `InjectPlainTextSiblings`, etc. Every other Builders.* file relies on these.
 - **`src/Builders/Builders.Skins.cs`** — the heaviest partial: `ProcessUpgrades`, `BuildSkin`/`BuildSkinModifier`, `PopulateSkinPreviews`, the chance-gated-modifier filter shared with `SkinRenderer`.
 - **`src/Models/*.cs`** — DTOs mirroring each game catalog (one per file, name == primary type). Game enums are flattened to strings.
-- **`src/Models/DumpFile.cs`** — Top-level wrapper covering ~30 sections (`upgrades`, `gears`, `characters`, `resources`, `directives`, `missions`, `enemies`, …). See `data.schema.json` for full per-entry shapes.
+- **`src/Models/DumpFile.cs`** — Top-level wrapper covering ~50 sections (`upgrades`, `gears`, `characters`, `resources`, `directives`, `missions`, `enemies`, …). See `data.schema.json` for full per-entry shapes.
 - **`src/Serialization/NativeConverter.cs`** — Newtonsoft `JsonConverter` for Unity-native types (`HexMap`, `UpgradeProperty`, `DirectiveProperty`). Delegates to `JsonUtility.ToJson` and writes the result as raw JSON; read is not implemented (dump-only).
 
-- **`src/Probe.cs`** — runtime introspection helper. Triggered by `$MYCOPUNK_DIR/probe.flag` (or `mise run probe`). Writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, subclasses.txt, unlock-directives.txt, samples/}` for exploration before adding new dumpers. Add new probe targets by editing `Probe.Run()` — the helpers (`DumpType<T>`, `DiscoverSubclasses<T>`, `SampleScriptableObjects<T>`) handle reflection and output formatting. **Workflow**: run `mise run probe`, read `subclasses.txt` for polymorphic types, design DTO, add builder, repeat.
+- **`src/Probe.cs`** — runtime introspection helper. Triggered by `$MYCOPUNK_DIR/probe.flag` (or `mise run probe`). Writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, subclasses.txt, unlock-directives.txt, samples/}` for exploration before adding new dumpers. Add new probe targets by editing `Probe.Run()` — the helpers (`DumpType<T>`, `DiscoverSubclasses<T>`, `SampleScriptableObjects<T>`) handle reflection and output formatting. **Workflow**: run `mise run probe`, read `subclasses.txt` for polymorphic types, design DTO, add builder, repeat. **Finding gaps**: the probe also writes `catalogs.txt` (every SO type, counted before/after `Resources.LoadAll` — a `0` in the first column means the dump can't see it without `LoadAll`), `catalogs/<Type>.txt` (asset names + 3 samples each), `global-fields.txt` (every `Global` field with its value) and `components.txt` (MonoBehaviour type counts). `mise run coverage` (`tools/coverage.py`) cross-references those against `src/` with ancestor resolution from `decompiled/`. The probe's `LoadAll` leaves extra objects loaded, so the probe run's `data.json` is not a clean dump.
 - **`data.schema.json`** — JSON Schema (Draft 2020-12) describing the dump's shape. Validates against the current `data.json` via `ajv-cli`. Hand-written; keep in sync with the DTOs when adding new fields.
 
 `NativeConverter` post-processes Unity's `JsonUtility.ToJson` output to quote bare `Infinity` / `-Infinity` / `NaN` tokens (Unity emits them unquoted; strict JSON parsers reject them). Combined with `FloatFormatHandling.String` on the outer Newtonsoft serializer, the entire dump is valid RFC 8259 JSON.
@@ -103,7 +104,9 @@ The decompiled `Assembly-CSharp.dll` is the single biggest unblocker for this co
 ## Runtime patterns for new dumpers
 
 - **Catalog discovery**: `UnityEngine.Resources.FindObjectsOfTypeAll<T>()` for any `T : ScriptableObject`. Returns prefab assets at game start under BepInEx, including non-active ones. The pattern repeats for every catalog section in `Plugin.Start`. **Caveat**: it only sees *loaded* objects, so a catalog nothing references at startup comes back empty with no error — `Fulfillment` is the known case, and it needs `Resources.LoadAll<T>("")` instead (which also makes the objects visible to a later `FindObjectsOfTypeAll`). If a new catalog dumps zero entries, try `LoadAll` before assuming the type is wrong.
-- **Multi-seed sampling for RNG-rolled stats**: 23 `UpgradeProperty` subclasses call `GetRandomEffect()` / `rand.Next*()` inside `GetStatData`. Run with seeds 0..15 and union the resulting `value` strings — see the `RolledValuesByUpgradable` loop in `Plugin.ProcessUpgrades`. Captures categorical rolls (Element, Row/Column) and numeric distributions.
+- **Multi-seed sampling for RNG-rolled stats**: 23 `UpgradeProperty` subclasses call `GetRandomEffect()` / `rand.Next*()` inside `GetStatData`. Run with seeds 0..15 and union the resulting `value` strings — see `CollectPropertyStats` in `Builders.Skins.cs`. Captures categorical rolls (Element, Row/Column) and numeric distributions. Some properties (e.g. `UpgradeProperty_GrowGrid`) roll from `UpgradeInstance.Seed` instead of the passed `Random`, and the game's `UpgradeInstance` constructor randomizes that seed — so the instance factory must set `Seed` to the sampling seed, or the dump goes nondeterministic.
+- **Generic wrappers** (`ThreatModifier<T>`, `PlayerModifier<T>`, `IntensityModifier<T>`, `WeightedArray<T>`, `AnimationCurve`): `JsonUtility` emits `{}` for these. Flatten them with the helpers in `Builders.Scaling.cs` (`ThreatValues`, `ThreatPlayerValues`, `IntensityValues`, `WeightedValues`, `BuildCurve`, …).
+- **Prefab MonoBehaviour stats**: don't `JsonUtility` whole MonoBehaviours (they drag audio/VFX `instanceID`s). Use `PartFields` in `Builders.Enemies.cs` — a reflection bag of serialized numeric/enum/`DamageData`/`Range` fields — as `enemyParts` and `worldObjects` do.
 - **`TextBlocks.strings`** is the master `Dictionary<string, TextBlockGroup>` populated from CSV at startup. Every game-displayed string resolves through `TextBlocks.GetString(key)`. Exposed as `localization` in the dump. For any "where does this label come from?" question, grep decompiled source for `TextBlocks.GetString("` calls.
 - **`@ref` instance-ID enrichment**: `NativeConverter` post-processes JsonUtility output and adds `"@ref": "<type>:<key>"` to every `{"instanceID": N}` whose `N` is in `NativeConverter.InstanceRefs`. To make a new catalog cross-referenceable, add a `foreach (var x in Resources.FindObjectsOfTypeAll<T>()) NativeConverter.InstanceRefs[x.GetInstanceID()] = "<type>:<key>";` block in `Plugin.Start` (before the dump assembly).
 - **`ProcessUpgrades(Global.Instance)`** captures `Global.upgradesForAllGear` (the upgrades that apply to all gear / are part of the global skill tree). Don't re-dump them by other means.

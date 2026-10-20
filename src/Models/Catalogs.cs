@@ -46,6 +46,12 @@ public class CustomWaveEntry
     public TypeWeight[] TypeChances;
     public bool AddAttachments;
     public int OverrideIndividualEnemies;
+    public string SpecialEnemy;            // SpecialFirstEnemyWave: enemy key
+    public int? NumSpecialEnemies;         // SpecialFirstEnemyWave
+    public float? PartChance;              // AddAttachmentsWave
+    public MinMax<int> PartCount;          // AddAttachmentsWave
+    public WeightedEntry[] Parts;          // AddAttachmentsWave: keys into `enemyParts`
+    public WeightedEntry[] Classes;        // ClassListEnemyWave: enemy keys
 
     public class TagWeight { public string Tag; public float Multiplier; }
     public class TypeWeight { public string Type; public float Multiplier; }

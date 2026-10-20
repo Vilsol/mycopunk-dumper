@@ -18,4 +18,6 @@ public class MissionModifierEntry
     public Upgrade.DIcon Icon;
     public string[] IncompatibleMissions;     // mission IDs
     public int[] IncompatibleModifiers;       // modifier IDs
+    [Newtonsoft.Json.JsonConverter(typeof(NativeConverter))]
+    public MissionModifier RawData;           // subclass fields (wave refs, Generic `action` UnityEvent, incompatibleLevelFlags, …)
 }

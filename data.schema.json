@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Vilsol/MycopunkDumper/data.schema.json",
   "title": "MycopunkDumper data.json",
-  "description": "JSON Schema for the dump produced by the MycopunkDumper BepInEx plugin for the Unity game Mycopunk. The dump is a static catalog of every upgrade, gear, character, resource, and directive defined in the game, extracted by walking publicized game state at runtime and serializing it via Newtonsoft.Json (with a JsonUtility shim for Unity-native types). See SCHEMA_CHANGES.md for the migration history from the legacy upgrades.json shape.",
+  "description": "JSON Schema for the dump produced by the MycopunkDumper BepInEx plugin for the Unity game Mycopunk. The dump is a static catalog of every upgrade, gear, character, resource, and directive defined in the game, extracted by walking publicized game state at runtime and serializing it via Newtonsoft.Json (with a JsonUtility shim for Unity-native types).",
   "type": "object",
   "required": ["gameVersion", "upgrades", "gears", "characters", "resources", "directives", "missions", "objectives", "regions", "enemies", "statusEffects", "stacks", "threats", "missionModifiers", "lootPools", "localization", "authItems", "patternPaths", "threatProfiles", "customWaves", "collectables", "enemyGroups", "globalEvents", "playerUpgrades", "statusEffectGlobals", "formulas", "achievements", "steamStats"],
   "properties": {
@@ -60,6 +60,11 @@
       "type": "object",
       "description": "Enemy catalog from EnemyClass ScriptableObjects, keyed by EnemyClass.ID stringified. Includes full per-enemy combat stats (movement, melee, ragdoll, navigation, limb regrowth) under Config.",
       "additionalProperties": { "$ref": "#/$defs/Enemy" }
+    },
+    "enemyParts": {
+      "type": "object",
+      "description": "Enemy part prefabs (cores, shells, legs, leg segments, arms/arm tips, attachments) referenced by `enemies[].Cores/Legs/Arms/AttachmentGroups/SpawnWithEnemy`, `economy.GlobalEnemyAttachments`, Global.GunArmLarge, and recursively by other parts (`SpawnWithChildren`, `legPartPrefab`, `tipPrefab`). Keyed by prefab name, deduplicated across enemies. All values are pre-scaling base stats: difficulty.EnemyHealthScaling[EnemyType] / EnemyDamageScaling apply on top, shell parts' maxHealth is further × enemy.ShellHealthMultiplier, leg segments' maxHealth × EnemyIKLeg.healthMultiplier × enemy.LegHealthMultiplier, and overclocked enemies' parts × overclockHealthMultiplier × GlobalOverclockHealthMultiplier (1.25).",
+      "additionalProperties": { "$ref": "#/$defs/EnemyPartPrefab" }
     },
     "statusEffects": {
       "type": "object",
@@ -213,10 +218,46 @@
       "type": "object",
       "description": "In-game achievements/challenges. Catalog source: `Resources.LoadAll<Fulfillment>(\"\")` — these are not referenced by anything loaded at startup, so `FindObjectsOfTypeAll` does not see them. Keyed by `Fulfillment.ID` (e.g. \"f_bunker\", \"ff_grid\"). Distinct from `achievements`, which is only the list of Steam achievement API IDs.",
       "additionalProperties": { "$ref": "#/$defs/FulfillmentEntry" }
+    },
+    "difficulty": {
+      "$ref": "#/$defs/Difficulty",
+      "description": "Global threat × player-count enemy scaling (Global.Instance DIFFICULTY block)."
+    },
+    "economy": {
+      "$ref": "#/$defs/Economy",
+      "description": "Global mission-reward constants, threat/intensity reward multipliers, enemy drop chances and rarity roll weights."
+    },
+    "missionEvents": {
+      "type": "object",
+      "description": "Global.MissionEvents — random mid-mission events, keyed by asset name. Trigger rules are hardcoded in MissionManager (not dumped as fields): every 180 s (`MissionEventInterval`) the server rolls a 26% chance (`MissionEventChance`) to start one, only on missions with the NormalMission flag and without DisableSideObjetives/DisableEncounters; the event is picked by `Weight` and skipped if its `CanStart_Server()` fails (weather: no weather active; amalgamation: none spawned yet, not during extraction, no unfinished Amalgamation global event).",
+      "additionalProperties": { "$ref": "#/$defs/MissionEvent" }
+    },
+    "missionGeneration": {
+      "$ref": "#/$defs/MissionGeneration",
+      "description": "Global mission-roll parameters: how many modifiers a generated mission gets, which modifiers, and side-objective spawning."
+    },
+    "combatGlobals": {
+      "$ref": "#/$defs/CombatGlobals",
+      "description": "Shared damage tuning on Global.Instance (lightning fork damage, overclocked core explosion falloff)."
+    },
+    "genericStatUpgrades": {
+      "type": "array",
+      "description": "Global.GenericPlayerStatUpgrades — the random bonus-stat pool for upgrades whose `Flags` include `ApplyStatUpgrades`. Per upgrade instance the game seeds `rand = new Random((seed + 134) * 419 - 12)`, picks ONE property uniformly (`rand.Next(count)`), then applies it to the player (Upgrade.ApplyRandomStatUpgrade, called from Player.ApplyUpgrade) and shows its StatData in the tooltip (colored #FFD58D) using the same rand, so the rolled value depends on the instance seed. Same per-property shape as upgrade `Properties`, evaluated against each character (keyed by character APIName) with seeds 0..15 and a null UpgradeInstance.",
+      "items": { "$ref": "#/$defs/UpgradeDProperty" }
+    },
+    "worldObjects": {
+      "type": "object",
+      "description": "Hazard and interactable prefabs, keyed by prefab/asset name (Unity \" (n)\" duplicate suffixes collapsed). Sources: Global.HornetPrefab, HardonTurret, MortarBullet, laserBullets[i] (indexed by LaserArmTip damageEffect), Explodunguses, HealCollectableLarge/SmallPrefab, GenericResourceCollectable, TossResourceCollectable, OverclockedExplosion, AntigravityField; ScrapperGear.grapplePolePrefab; plus every loaded ExplodingTarget, VolatileExplosive, DamageOnHit, AmmoCollectable, LaunchPad, SafetyBubble prefab and AcidFlyTrapData asset. Components use the same shape as `enemyParts` (Fields extraction identical). Notes: ObjectTarget subclasses (Hornet, HostileTurret, ExplodingTarget/AcidShroom/LightningShroom) carry base `maxHealth`; AcidShroom ignores `damage` and spawns Global.AcidPuddlePrefab (5 s lifetime, size = explosionRadius); LightningShroom ignores `damage` and forks combatGlobals lightning damage (range = explosionRadius, 20 hits); LaserBullet/MortarBullet damage comes from the firing enemy part; VolatileExplosive radius × EnemyManager.EnemyExplosionSizeMultiplier; ResourceCollectable `resource` is a `resources` key (Generic sets it at runtime); SafetyBubble `safetyStack`/`damageStack` are `stacks` keys.",
+      "additionalProperties": { "$ref": "#/$defs/WorldObject" }
     }
   },
 
   "$defs": {
+    "PlainText": {
+      "type": "string",
+      "description": "Copy of the sibling field (Plain<Field> ← <Field>) with Unity rich-text tags stripped. Injected by InjectPlainTextSiblings only when the source string contains tags, so it is usually absent."
+    },
+
     "IncursionData": {
       "type": "object",
       "description": "IncursionMission-only floor-reward scaling, read from private static fields.",
@@ -300,6 +341,7 @@
         "ID": { "type": "string", "description": "Canonical ID, also the map key (e.g. \"f_bunker\")." },
         "Subclass": { "type": "string", "description": "C# class name of the concrete Fulfillment subclass — determines which condition fields below are present." },
         "Description": { "type": "string", "description": "Resolved description. Absent when the localization key is missing from this build's CSV (TextBlocks echoes the key back for missing entries, which is filtered out here) or when resolving it needs live player data." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "DescriptionID": { "type": "string", "description": "`overrideDescription`, or `ID` when that is empty — the key `GetDescription()` resolves against." },
         "Category": { "type": "string", "enum": ["Career", "Mission", "HUB", "Gear"], "description": "Fulfillment.Category enum." },
         "CategoryName": { "type": "string", "description": "Localized category label. Absent for categories whose key is missing from the CSV." },
@@ -375,6 +417,7 @@
           "type": "string",
           "description": "Localized display name. May include rich-text tags (<color=...>, <link=...>)."
         },
+        "PlainName": {"$ref": "#/$defs/PlainText"},
         "EffectType": {
           "type": "string",
           "description": "Effect-element classification (Normal, Fire, Acid, Electric, etc.) — enum stringified."
@@ -399,6 +442,7 @@
           "type": "string",
           "description": "Localized in-game description with rich-text markup."
         },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "MustBeUnlockedFirst": {
           "type": ["string", "null"],
           "description": "Display string of a prerequisite upgrade that must be unlocked before this one. Stringified at dump time; can be cross-referenced by Name."
@@ -816,6 +860,7 @@
         "APIName": { "type": "string", "description": "Canonical key (matches the parent map's key)." },
         "TypeName": { "type": "string", "description": "Subtype description shown in UI (e.g. \"Accelerating Burst SMG\")." },
         "Description": { "type": "string", "description": "Localized in-game description with rich-text markup." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "GearType": {
           "type": "string",
           "description": "Category enum stringified.",
@@ -1013,7 +1058,9 @@
       "properties": {
         "ID": { "type": "string", "description": "Canonical key (matches parent map's key).", "examples": ["saxonite", "scrip", "beezia"] },
         "Name": { "type": "string", "description": "Display name (may include rich-text tags).", "examples": ["Saxonite", "Gats"] },
+        "PlainName": {"$ref": "#/$defs/PlainText"},
         "Description": { "type": "string", "description": "Localized description with rich-text markup." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "Color": { "type": "string", "description": "Theme color as Unity RGBA(r, g, b, a) string." },
         "IconColor": { "type": "string", "description": "Tint applied to Icon." },
         "Max": { "type": "integer", "description": "Maximum stack/inventory cap." },
@@ -1040,6 +1087,7 @@
         "ID": { "type": "integer", "description": "Stable directive ID (also used as parent map's key, stringified)." },
         "Name": { "type": "string", "description": "Resolved display name (block 0 of the first property's NameID, e.g. \"Cleanse\", \"Elemental Testing\")." },
         "Description": { "type": "string", "description": "Resolved description (block 1 of the first property's NameID)." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "CanBeChosen": { "type": "boolean", "description": "Whether the directive appears in the random selection pool." },
         "Icon": { "$ref": "#/$defs/DIcon" },
         "TierWeights": { "$ref": "#/$defs/TierWeights" },
@@ -1083,6 +1131,7 @@
         "NameID": { "type": "string", "description": "Localization key from the property's `NameID` (e.g. `dp_kill`, `dp_kill_e`, `dp_kill_g`). Resolves in `localization`." },
         "Name": { "type": "string", "description": "Resolved display name (block 0 of NameID)." },
         "Description": { "type": "string", "description": "Resolved description (block 1 of NameID)." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "LocalizationKeys": {
           "type": "array",
           "description": "Every `TextBlocks.GetString` key referenced in this directive property's source code. See `UpgradeDProperty.LocalizationKeys` for details.",
@@ -1101,10 +1150,12 @@
       "properties": {
         "ID": { "type": "string", "description": "Stable mission ID (matches the parent map's key)." },
         "Name": { "type": "string", "description": "Public Name property — usually the localized display name." },
+        "PlainName": {"$ref": "#/$defs/PlainText"},
         "MissionName": { "type": "string", "description": "Internal _missionName field — the canonical short ID (e.g. \"sat_salvage\", \"ouroboros\")." },
         "TypeName": { "type": "string", "description": "Public TypeName property — display label for the mission type." },
         "Category": { "type": "string", "description": "MissionCategory enum (Main/Special/Secret/Roguelike/Story) — drives TypeName." },
         "Description": { "type": "string", "description": "Localized description; may be empty for auto-generated missions." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "Subclass": { "type": "string", "description": "C# class name of the concrete Mission subclass." },
         "MissionType": { "type": "string", "description": "MissionType enum stringified (e.g. \"None\", \"CleanupDetail\", \"Amalgamation\")." },
         "MissionFlags": { "type": "string", "description": "MissionFlags flag-enum stringified (comma-separated, e.g. \"NormalMission, CanJoinDuringMission, AllowAsLobbyFilter\")." },
@@ -1235,6 +1286,19 @@
           "type": "array",
           "description": "Scenes belonging to this region.",
           "items": { "$ref": "#/$defs/SceneRef" }
+        },
+        "WorldProfiles": {
+          "type": "array",
+          "description": "WorldRegion.WorldProfiles — procedural terrain profiles for this region (textures, gradients and biome groups are not dumped).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Name": { "type": "string", "description": "WorldProfile asset name." },
+              "LocationNameID": { "type": "string", "description": "Localization key of the location name." },
+              "LocationName": { "type": ["string", "null"], "description": "Localized location name (TextBlocks block 0)." },
+              "DefaultEncounters": { "type": "array", "description": "Encounters this profile spawns by default; keys into `encounters`.", "items": { "type": "string" } }
+            }
+          }
         }
       }
     },
@@ -1267,12 +1331,78 @@
         "MaxLegs": { "type": "integer", "description": "Maximum number of legs." },
         "ArmChance": { "type": "number", "description": "Probability of spawning arms (0..1)." },
         "LegChance": { "type": "number", "description": "Probability of spawning legs at all (0..1)." },
+        "EnemyLimitSlots": { "type": "integer", "description": "Slots this enemy occupies against the per-class concurrent spawn limit." },
+        "LegHealthMultiplier": { "type": "number", "description": "Multiplies each spawned leg's EnemyIKLeg.healthMultiplier (leg segment health)." },
+        "DontSpawnShellChildren": { "type": "boolean", "description": "If true, shell parts don't spawn their own SpawnWithChildren." },
+        "ArmCount": {
+          "type": "object",
+          "description": "PlayerModifier<Vector2Int>: arms rolled uniformly in Min..Max (inclusive, capped by free attach points) when ArmChance passes. `Values[n-1]` for n = 1..4 players.",
+          "properties": {
+            "Values": { "type": "array", "items": { "$ref": "#/$defs/MinMax" } },
+            "PerExtraPlayer": { "type": "number" }
+          }
+        },
+        "Cores": { "type": "array", "description": "Weighted core prefabs (one picked per spawn), keyed by `enemyParts` name.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "Legs": { "type": "array", "description": "Weighted leg prefabs (one pick per leg), keyed by `enemyParts` name.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "Arms": { "type": "array", "description": "Weighted arm prefabs (one pick per arm), keyed by `enemyParts` name. Prefabs with an IArmTip are mounted on the `MountedOn` leg prefab (Global.GunArmLarge).", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "AttachmentGroups": { "type": "array", "description": "Per-enemy attachment groups; Parts keyed by `enemyParts` name.", "items": { "$ref": "#/$defs/EnemyPartList" } },
+        "SpawnWithEnemy": { "type": "array", "description": "Prefab names instantiated on the core at spawn (cataloged in `enemyParts` when they carry enemy parts).", "items": { "type": "string" } },
         "Config": { "$ref": "#/$defs/EnemyConfig" },
         "CustomLoot": {
           "type": "array",
           "description": "Extra rewards fired when this enemy is killed (LevelUnlockList from EnemyClass.CustomLoot). Same shape as gear LevelUnlocks. Most enemies have nothing here; bosses (e.g. Amalgamation) and special enemies (Pillabom, Missilehead) have entries.",
           "items": { "$ref": "#/$defs/LevelUnlockEntry" }
         }
+      }
+    },
+
+    "EnemyPartPrefab": {
+      "type": "object",
+      "description": "One enemy part prefab. Values are pre-scaling (see `enemyParts`).",
+      "properties": {
+        "MountedOn": { "type": "string", "description": "For IArmTip prefabs: the leg prefab (Global.GunArmLarge) the tip is spawned on when used as an arm." },
+        "Components": { "type": "array", "items": { "$ref": "#/$defs/EnemyPartComponent" } }
+      }
+    },
+    "WorldObject": {
+      "type": "object",
+      "description": "One hazard or interactable prefab (see `worldObjects`).",
+      "required": ["Category", "Source", "Components"],
+      "properties": {
+        "Category": { "enum": ["hazard", "interactable"] },
+        "Source": { "type": "string", "description": "Where the prefab was found: a Global field (\"Global.HornetPrefab\", \"Global.laserBullets[2]\"), \"ScrapperGear.grapplePolePrefab\", or the component/ScriptableObject type it was discovered by." },
+        "Components": { "type": "array", "items": { "$ref": "#/$defs/EnemyPartComponent" }, "description": "Gameplay components: ObjectTarget subclasses, ClientCollectable subclasses (HealingCollectable healAmount/canOverheal, ResourceCollectable amount/isAmountAffectedByDifficulty, AmmoCollectable ammo), LaserBullet, RocketSalvoBullet/MortarBullet, VolatileExplosive, DamageOnHit (Min/Max(Player)Damage over Min/MaxSpeed), OverclockedExplosion, AntigravityField, LaunchPad, SafetyBubble, GrapplePole. AcidFlyTrapData is a single pseudo-component with extra `BulletScale` / `BulletExplosionSize` arrays (per-glob GlobData)." }
+      }
+    },
+    "EnemyPartComponent": {
+      "type": "object",
+      "description": "A gameplay MonoBehaviour inside a part prefab: an EnemyPart subclass (EnemyCore, EnemyShell, EnemyLimbPart, GunArmTip subclasses, MissileShell, MissileArrayPart, EnemyTurret, ExplosiveEnemyPart, BarrelCore, ScrapBossCore, ErrorBossCore, AmalgamationCore, …), an EnemyIKLeg, or a Weakpoint.",
+      "required": ["Path", "Subclass"],
+      "properties": {
+        "Path": { "type": "string", "description": "Child transform path relative to the prefab root (\"\" = root)." },
+        "Subclass": { "type": "string", "description": "Concrete C# component type." },
+        "Fields": {
+          "type": "object",
+          "description": "Unity-serialized fields (public or [SerializeField], incl. [field: SerializeField] auto-properties by property name) of the component's game-assembly type chain, plus `const`s (e.g. EnemyCore OverclockExplosionDamagePlayer/Enemy, OverclockFuseDuration; EnemyPart GlobalOverclockHealthMultiplier). Only numbers, booleans, enums (stringified), DamageData, Range (MinMax), Vector2/Vector2Int ([x, y]) and prefab references are kept; audio/VFX/shake fields are skipped. Prefab references (`legPartPrefab`, `tipPrefab`, `SpawnWithChildren`) are `enemyParts` keys. PlayerStackData refs (e.g. AntiGravFieldAttachment `antigravStack`) are `stacks` keys; PlayerResource refs are `resources` keys. Notable keys: maxHealth, overclockHealthMultiplier (EnemyPart); overclockExplosionRadius (EnemyCore); healthMultiplier, meleeDamage, meleeDamageRadius, weakpointChance, numLegParts (EnemyIKLeg); damage, fireInterval, maxFireDistance, burstSize, speed, damageEffect/effect + amount (GunArmTip subclasses); damage (DamageData), explosionSize, attackInterval (MissileShell/MissileArrayPart/EnemyTurret); minDamage/maxDamage/playerDamage, explosionRadius, fuseDuration (ExplosiveEnemyPart/BarrelCore); damageMultiplier (Weakpoint).",
+          "additionalProperties": {
+            "anyOf": [
+              { "type": ["number", "boolean", "string"] },
+              { "type": "array", "items": { "type": ["number", "string"] } },
+              { "$ref": "#/$defs/MinMax" },
+              { "$ref": "#/$defs/DamageInfo" }
+            ]
+          }
+        }
+      }
+    },
+    "DamageInfo": {
+      "type": "object",
+      "description": "Flattened DamageData struct.",
+      "properties": {
+        "Damage": { "type": "number" },
+        "Effect": { "type": "string", "description": "EffectType enum stringified." },
+        "EffectAmount": { "type": "number" },
+        "DamageFlags": { "type": "string", "description": "DamageFlags flag-enum stringified." }
       }
     },
 
@@ -1364,7 +1494,9 @@
         "TimeOutDuration": { "type": "number", "description": "Seconds after which all stacks expire (0 = no timeout)." },
         "TimeoutOnLevelLoad": { "type": "boolean" },
         "DisplayOnHUD": { "type": "boolean" },
-        "Icon": { "$ref": "#/$defs/DIcon" }
+        "Icon": { "$ref": "#/$defs/DIcon" },
+        "Subclass": { "type": "string", "description": "C# class name (\"PlayerStackData\", \"AntigravStack\", \"HeavyStack\", \"WildfireStack\", \"JumpBoostStack\")." },
+        "RawData": { "type": "object", "description": "Full SO via JsonUtility. Subclass tunables: AntigravStack gravityMultiplier/gravityPowerPerStack/maxModifiedStacks/ouroborosMultiplier, HeavyStack slowAmount, WildfireStack effectAmount, JumpBoostStack baseForce/addedForcePerStack." }
       }
     },
 
@@ -1375,6 +1507,7 @@
       "properties": {
         "ID": { "type": "string", "description": "Internal threat name (\"threat1\".. \"threat7\")." },
         "Name": { "type": "string", "description": "Display name (\"Safe\", \"Brutal\", …)." },
+        "PlainName": {"$ref": "#/$defs/PlainText"},
         "NumberLabel": { "type": "string", "description": "Numbered label (e.g. \"Threat Level 1\")." },
         "Color": { "type": "string" },
         "Icon": { "$ref": "#/$defs/DIcon" },
@@ -1468,7 +1601,13 @@
           }
         },
         "AddAttachments": { "type": "boolean" },
-        "OverrideIndividualEnemies": { "type": "integer" }
+        "OverrideIndividualEnemies": { "type": "integer", "description": "Override priority for individual enemy picks (SpecialFirstEnemyWave.enemyOverridePriority, ClassListEnemyWave.priority, PixieWave 1; 0 = none)." },
+        "SpecialEnemy": { "type": "string", "description": "SpecialFirstEnemyWave: enemy key (into `enemies`) spawned as the wave's first enemies." },
+        "NumSpecialEnemies": { "type": "integer", "description": "SpecialFirstEnemyWave: how many of `SpecialEnemy` to spawn." },
+        "PartChance": { "type": "number", "description": "AddAttachmentsWave: per-enemy chance to attach parts." },
+        "PartCount": { "$ref": "#/$defs/MinMax", "description": "AddAttachmentsWave: number of parts attached." },
+        "Parts": { "type": "array", "description": "AddAttachmentsWave: weighted part prefabs, keys into `enemyParts`.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "Classes": { "type": "array", "description": "ClassListEnemyWave: weighted enemy keys (into `enemies`).", "items": { "$ref": "#/$defs/WeightedEntry" } }
       }
     },
     "Collectable": {
@@ -1555,7 +1694,171 @@
               "Add": { "type": "integer" }
             }
           }
+        },
+        "MissionXP": { "type": "string", "description": "Global.GetMissionXP: mission-completion XP in terms of `economy`, `missions[].MissionXPMultiplier` and the mission container's GetXPMultiplier() (1 for DefaultMissionContainer)." }
+      }
+    },
+
+    "PlayerScaled": {
+      "type": "object",
+      "description": "Flattened PlayerModifier<T>. `Values[n-1]` applies for n = 1..4 players; for n > 4 the game uses `Values[3] + PerExtraPlayer * (n - 4)` (rounded for integer modifiers).",
+      "properties": {
+        "Values": { "type": "array", "items": { "type": "number" } },
+        "PerExtraPlayer": { "type": "number" }
+      }
+    },
+    "ThreatPlayerGrid": {
+      "type": "array",
+      "description": "ThreatModifier<PlayerModifier<float>>: one PlayerScaled per threat level (index = threat - 1, 8 entries).",
+      "items": { "$ref": "#/$defs/PlayerScaled" }
+    },
+    "ThreatValues": {
+      "type": "array",
+      "description": "ThreatModifier<T>: index = threat level - 1 (8 entries).",
+      "items": { "type": "number" }
+    },
+    "WeightedEntry": {
+      "type": "object",
+      "description": "One Pigeon.WeightedArray node. Pick probability = Weight / sum of weights in the array.",
+      "required": ["Key", "Weight"],
+      "properties": {
+        "Key": { "type": ["string", "null"], "description": "Dump key of the value (rarity name, enemy key, prefab name, enum name, …)." },
+        "Weight": { "type": "integer" }
+      }
+    },
+    "MinMax": {
+      "type": "object",
+      "description": "Flattened game Range<T>.",
+      "properties": {
+        "Min": { "type": "number" },
+        "Max": { "type": "number" }
+      }
+    },
+    "EnemyPartList": {
+      "type": "object",
+      "description": "EnemyClass.PartList — attachment group rolled per enemy spawn: if roll <= Chance and Max > 0, attaches Min..Max parts picked from Parts by weight.",
+      "properties": {
+        "Chance": { "type": "number" },
+        "Min": { "type": "integer" },
+        "Max": { "type": "integer" },
+        "OverrideAttachMode": { "type": "string", "description": "AttachMode enum stringified." },
+        "Parts": { "type": "array", "description": "Keyed by part prefab name.", "items": { "$ref": "#/$defs/WeightedEntry" } }
+      }
+    },
+    "Difficulty": {
+      "type": "object",
+      "description": "Enemy scaling multipliers by threat level (and player count where PlayerScaled). Values are applied on top of the per-enemy base stats.",
+      "properties": {
+        "EnemyHealthScaling": {
+          "type": "object",
+          "description": "Health multiplier keyed by EnemyType (\"Grunt\", \"Brute\", \"Abomination\", \"Boss\").",
+          "additionalProperties": { "$ref": "#/$defs/ThreatPlayerGrid" }
+        },
+        "EnemyDamageScaling": { "$ref": "#/$defs/ThreatPlayerGrid" },
+        "EnemyWaveSize": { "$ref": "#/$defs/ThreatPlayerGrid" },
+        "EnemyWaveInterval": { "$ref": "#/$defs/ThreatPlayerGrid" },
+        "EnemyMoveSpeedScaling": { "$ref": "#/$defs/ThreatValues" },
+        "EnemyAttackSpeedScaling": { "$ref": "#/$defs/ThreatValues" },
+        "LookForPartIntervalScaling": { "$ref": "#/$defs/ThreatValues" },
+        "IntensityWaveInterval": { "type": "array", "description": "IntensityModifier by intensity (0 low, 1 medium, 2 high). Multiplies the wave's minSpawnGroupIntervalAfterSlotsAreOpen (EnemyManager.BlendWave).", "items": { "type": "number" } },
+        "IntensityMinOpenWaveSlots": { "type": "array", "description": "IntensityModifier by intensity. Multiplies minOpenEnemySlotsToSpawnNextGroup (rounded, clamped to 0..maxLivingEnemies).", "items": { "type": "number" } },
+        "DefaultTeamReviveCount": { "$ref": "#/$defs/PlayerScaled", "description": "Team revives per mission by player count; the game uses round(value × mission.TeamReviveMultiplier)." }
+      }
+    },
+    "Economy": {
+      "type": "object",
+      "description": "Reward constants and drop chances from Global.Instance.",
+      "properties": {
+        "BaseMissionXP": { "type": "integer", "description": "See `formulas.MissionXP`." },
+        "BaseScripForMissionCompletion": { "type": "integer" },
+        "BaseScripForSideObjective": { "type": "integer" },
+        "BaseXPForSideObjective": { "type": "integer" },
+        "BaseResourcesForSideObjective": { "type": "integer" },
+        "ResourceAmountMultiplier": { "$ref": "#/$defs/ThreatValues", "description": "Per-threat reward multiplier (resources and mission XP)." },
+        "SurvivalBonusScrip": { "$ref": "#/$defs/ThreatValues" },
+        "IntensityScripAndXPMultiplier": { "type": "array", "description": "IntensityModifier: index = intensity (0 low, 1 medium, 2 high).", "items": { "type": "number" } },
+        "EnemyUpgradeDropChances": {
+          "type": "object",
+          "description": "Chance an enemy spawns carrying an upgrade-drop part, keyed by EnemyType. EnemyClass.overrideUpgradeDropChance (>= 0) wins over this; ×0.6 while the Abomination modifier is active in Overtime. Note EnemyManager clamps the type to min(type, Brute) when rolling, so Abomination/Boss entries are effectively unused for spawns.",
+          "additionalProperties": { "type": "number" }
+        },
+        "CombatResourceSpawnChance": { "type": "number", "description": "Per-spawn chance to attach the combat-resource part (levels with the SpawnCombatResource flag)." },
+        "GlobalEnemyAttachments": { "type": "array", "description": "Attachment groups rolled on every enemy spawn (skipped when upgrade drops are disabled for the level).", "items": { "$ref": "#/$defs/EnemyPartList" } },
+        "RarityWeights": { "type": "array", "description": "Upgrade rarity roll weights, keyed by rarity name (matches `rarities`).", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "SkinRarityWeights": { "type": "array", "description": "Skin rarity roll weights, keyed by rarity name.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "RandomRewards": {
+          "type": "array",
+          "description": "Global.randomRewards — weighted resource drop rolled when a Brute-or-larger enemy core dies (Global.GetRandomReward). Entries with a null Resource mean no drop. Hardcoded rule checked first (non-guaranteed rolls only): with 0.4% chance, if the player owns any `strange_drop`, the reward is 1 `strange_comp` instead.",
+          "items": {
+            "type": "object",
+            "required": ["Count", "Weight"],
+            "properties": {
+              "Resource": { "type": ["string", "null"], "description": "Resource ID (key into `resources`); null = no drop." },
+              "Count": { "type": "integer" },
+              "Weight": { "type": "integer" }
+            }
+          }
         }
+      }
+    },
+    "MissionGeneration": {
+      "type": "object",
+      "description": "Mission roll parameters from Global.Instance.",
+      "properties": {
+        "MissionModifierChance": { "type": "number", "description": "Mission.GetModifierCount: if a seeded roll > this, the mission has 0 modifiers." },
+        "MissionModifierCountCurve": { "$ref": "#/$defs/CurveData", "description": "Otherwise modifier count = round(curve.Evaluate(uniform 0..1))." },
+        "MissionModifiers": { "type": "array", "description": "Weighted modifier picks; keys into `missionModifiers`.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "SideObjectiveSpawnChance": { "type": "number", "description": "At mission start (NormalMission, side objectives not disabled, non-procedural level) roll < this enables side content: up to 4 encounters spawn and side-objective spawning starts at 5% per 120 s check (+10% after each failed check)." },
+        "SideObjectives": { "type": "array", "description": "Weighted side-objective prefabs; keys into `objectives`.", "items": { "$ref": "#/$defs/WeightedEntry" } }
+      }
+    },
+    "CombatGlobals": {
+      "type": "object",
+      "properties": {
+        "LightningForkDamage": { "$ref": "#/$defs/DamageInfo", "description": "Base DamageData for lightning fork effects (LightningShroom, GameManager lightning RPCs; the RPC variant overrides Damage with the caller's value)." },
+        "CoreExplosionDamageFalloff": { "$ref": "#/$defs/CurveData", "description": "Overclocked core explosion falloff: player damage = 40 × curve(distance / radius); non-player targets take a flat 500 (constants hardcoded in EnemyCore / OverclockedExplosion)." }
+      }
+    },
+    "CurveData": {
+      "type": "object",
+      "description": "Flattened UnityEngine.AnimationCurve.",
+      "properties": {
+        "PreWrapMode": { "type": "string" },
+        "PostWrapMode": { "type": "string" },
+        "Keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Time": { "type": "number" },
+              "Value": { "type": "number" },
+              "InTangent": { "anyOf": [{ "type": "number" }, { "type": "string" }], "description": "May be \"Infinity\" for stepped keys." },
+              "OutTangent": { "anyOf": [{ "type": "number" }, { "type": "string" }] },
+              "InWeight": { "type": "number" },
+              "OutWeight": { "type": "number" },
+              "WeightedMode": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "MissionEvent": {
+      "type": "object",
+      "description": "A Global.MissionEvents entry. Subclass-specific data is flattened for WeatherMissionEvent and AmalgamationMissionEvent; others (e.g. RocketPassover) only in RawData.",
+      "required": ["Name", "Weight"],
+      "properties": {
+        "Name": { "type": "string", "description": "Asset name (also the parent map key)." },
+        "Subclass": { "type": "string", "description": "C# class of the IMissionEvent (the component's class for prefab entries)." },
+        "Index": { "type": "integer", "description": "Position in Global.MissionEvents." },
+        "Weight": { "type": "integer", "description": "Pick weight among all mission events." },
+        "IsPrefab": { "type": "boolean", "description": "True when the entry is a GameObject carrying an IMissionEvent component." },
+        "Weather": { "type": "array", "description": "WeatherMissionEvent: weather-type weights keyed by WeatherManager.WeatherType.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "RainDuration": { "$ref": "#/$defs/MinMax", "description": "Seconds." },
+        "FogDuration": { "$ref": "#/$defs/MinMax", "description": "Seconds. Fog intensity is rolled 0.2–0.5." },
+        "SulfurRainDuration": { "$ref": "#/$defs/MinMax", "description": "Seconds." },
+        "DebrisStormDuration": { "$ref": "#/$defs/MinMax", "description": "Seconds." },
+        "AmalgamationClass": { "type": "string", "description": "AmalgamationMissionEvent: spawned enemy key (matches `enemies`). Health ×0.45 solo, ×0.8 with 2 players." },
+        "RawData": { "type": ["object", "null"], "description": "The IMissionEvent via JsonUtility." }
       }
     },
 
@@ -1603,6 +1906,17 @@
           "type": "array",
           "description": "Rewards on completion (LevelUnlockEntry list).",
           "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "CorpData": {
+          "type": "array",
+          "description": "Only on CorpContestGlobalEvent: one entry per competing corporation.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "WeaponID": { "type": "string", "description": "Promoted weapon; key into gears." },
+              "TicketResource": { "type": "string", "description": "Per-corp contest currency; key into resources." }
+            }
+          }
         },
         "RawData": {
           "type": "object",
@@ -1661,7 +1975,9 @@
         "APIName": { "type": "string" },
         "Name": { "type": "string", "description": "Localized display name." },
         "Description": { "type": "string", "description": "Localized description." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"},
         "TitleAndDescription": { "type": "string", "description": "Combined rich-text title + description as shown in the modifier popup." },
+        "PlainTitleAndDescription": {"$ref": "#/$defs/PlainText"},
         "Subclass": { "type": "string", "description": "C# class name. Most are \"MissionModifierGeneric\"; some are wave-specific (\"MissionModifierWaveModifier\") or named subclasses (\"MissionModifierHorde\")." },
         "Flags": { "type": "string", "description": "ModifierFlags flag-enum stringified (e.g. \"AllowInNormalMissions\")." },
         "Danger": { "type": "string", "description": "Danger enum stringified (\"None\", \"Low\", \"Medium\", \"High\", \"Extreme\")." },
@@ -1679,7 +1995,8 @@
           "type": "array",
           "description": "Modifier IDs this modifier is incompatible with.",
           "items": { "type": "integer" }
-        }
+        },
+        "RawData": { "type": "object", "description": "Full SO via JsonUtility. Subclass fields: WaveModifier/Horde `modifier` (CustomWave @ref), Horde addedWaveInterval/addedOpenEnemySlotsToSpawnNextGroup, AmalgamationModifier spawnChance/amalgamationClass (enemy @ref), Prefab prefab/offset/exclusionRadius, Generic `action` UnityEvent (m_PersistentCalls.m_Calls[].m_MethodName names the effect, e.g. IncreaseGruntSpeed), and incompatibleLevelFlags on all." }
       }
     },
 

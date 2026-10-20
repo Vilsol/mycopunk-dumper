@@ -21,6 +21,7 @@ public partial class Plugin : BaseUnityPlugin
     private static readonly SortedDictionary<string, ObjectiveEntry> ObjectiveMap = new();
     private static readonly SortedDictionary<string, Region> RegionMap = new();
     private static readonly SortedDictionary<string, Enemy> EnemyMap = new();
+    private static readonly SortedDictionary<string, EnemyPartPrefab> EnemyPartMap = new();
     private static readonly SortedDictionary<string, StatusEffectEntry> StatusEffectMap = new();
     private static readonly SortedDictionary<string, Stack> StackMap = new();
     private static readonly SortedDictionary<string, Threat> ThreatMap = new();
@@ -72,6 +73,7 @@ public partial class Plugin : BaseUnityPlugin
         ObjectiveMap.Clear();
         RegionMap.Clear();
         EnemyMap.Clear();
+        EnemyPartMap.Clear();
         StatusEffectMap.Clear();
         StackMap.Clear();
         ThreatMap.Clear();
@@ -507,6 +509,8 @@ public partial class Plugin : BaseUnityPlugin
             if (string.IsNullOrEmpty(key) || EnemyMap.ContainsKey(key)) continue;
             EnemyMap[key] = BuildEnemy(e);
         }
+        CatalogPart(Global.Instance.GunArmLarge?.gameObject);
+        foreach (var pl in Global.Instance.GlobalEnemyAttachments ?? []) CatalogParts(pl.parts);
         foreach (var s in UnityEngine.Resources.FindObjectsOfTypeAll<StatusEffectData>())
         {
             if (s == null) continue;
@@ -581,6 +585,7 @@ public partial class Plugin : BaseUnityPlugin
             objectives = ObjectiveMap,
             regions = RegionMap,
             enemies = EnemyMap,
+            enemyParts = EnemyPartMap,
             statusEffects = StatusEffectMap,
             stacks = StackMap,
             threats = ThreatMap,
@@ -619,6 +624,13 @@ public partial class Plugin : BaseUnityPlugin
             gridProfiles = GridProfileMap,
             fulfillments = FulfillmentMap,
             planets = PlanetMap,
+            difficulty = BuildDifficulty(),
+            economy = BuildEconomy(),
+            missionEvents = BuildMissionEvents(),
+            missionGeneration = BuildMissionGeneration(),
+            combatGlobals = BuildCombatGlobals(),
+            genericStatUpgrades = BuildGenericStatUpgrades(),
+            worldObjects = BuildWorldObjects(),
             statusEffectGlobals = new StatusEffectGlobals(),
             formulas = new Formulas
             {
@@ -628,7 +640,8 @@ public partial class Plugin : BaseUnityPlugin
                     new Formulas.XPCurve { Context = "character_11_plus", Description = "Player character XP, levels 11+. Formula uses (level-10) as input.", LevelOffset = 10, Coefficient = 60f, Power = 1.5f, Add = 2137 },
                     new Formulas.XPCurve { Context = "gear_1_to_5", Description = "Per-gear XP, levels 1..5. Formula: 50 * (level+1)^1.9 + 0.", LevelOffset = 0, Coefficient = 50f, Power = 1.9f, Add = 0 },
                     new Formulas.XPCurve { Context = "gear_6_plus", Description = "Per-gear XP, levels 6+. Formula uses (level-5) as input.", LevelOffset = 5, Coefficient = 33f, Power = 1.8f, Add = 1064 }
-                }
+                },
+                MissionXP = "ceil(economy.ResourceAmountMultiplier[threat-1] * economy.IntensityScripAndXPMultiplier[intensity] * round(economy.BaseMissionXP * mission.MissionXPMultiplier * missionContainerXPMultiplier))"
             },
             achievements = new[] {
                 "4_MODS", "ABOMINATION", "FULL_CREW", "HORNET_MELEE", "KILL_PLAYER",

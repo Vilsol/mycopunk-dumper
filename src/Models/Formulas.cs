@@ -13,6 +13,8 @@ public class Formulas
     /// </summary>
     public XPCurve[] XPCurves;
 
+    public string MissionXP;            // Global.GetMissionXP, in terms of `economy` / `missions` / `missionContainers` fields
+
     public class XPCurve
     {
         public string Context;          // "character_1_to_10" | "character_11_plus" | "gear_1_to_5" | "gear_6_plus"

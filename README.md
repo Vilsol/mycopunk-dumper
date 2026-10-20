@@ -15,14 +15,19 @@ Used to power external tools (wikis, build calculators, skin browsers) without s
 | `gears` / `characters` | gear definitions and the four playable characters |
 | `missions` / `missionModifiers` / `missionContainers` | mission catalog + modifier rules + weekly schedules |
 | `enemies` / `enemyGroups` / `customWaves` | full combat-stat catalog |
+| `enemyParts` | shared enemy part prefabs (cores, shells, legs, arm tips) with health, attack and overclock stats; referenced from `enemies` |
+| `difficulty` / `missionGeneration` | threat × player-count scaling grids, intensity pacing, revive counts, mission-modifier / side-objective roll weights |
+| `missionEvents` | weighted in-mission events (weather, amalgamation, rocket passover) |
+| `worldObjects` | hazards and pickups (hornets, turrets, shrooms, heal/ammo/resource pickups, launch pads, …) |
+| `combatGlobals` / `genericStatUpgrades` | global damage constants/curves; the random stat pool behind `ApplyStatUpgrades` |
 | `statusEffects` / `stacks` / `threats` / `threatProfiles` | combat tuning |
 | `lootPools` / `directives` / `globalEvents` / `encounters` | content gating + drops |
-| `resources` / `rarities` / `crafting` | economy tables |
+| `resources` / `rarities` / `crafting` / `economy` | economy tables, base rewards, drop chances, rarity weights |
 | `dialogue` / `quips` / `localization` | text catalogs |
 | `upgradePresets` | skin-modifier presets (Bloodmetal, Spectral, Coppertone, …) |
 | `formulas` / `achievements` / `steamStats` | hardcoded constants scraped from source |
 
-A formal **JSON Schema (Draft 2020-12)** description is at [`data.schema.json`](./data.schema.json). [`SCHEMA_CHANGES.md`](./SCHEMA_CHANGES.md) tracks shape changes vs. earlier dumps.
+A formal **JSON Schema (Draft 2020-12)** description is at [`data.schema.json`](./data.schema.json).
 
 ## Prerequisites
 
@@ -55,7 +60,8 @@ All build & deploy flows are mise tasks.
 | `mise run deploy` | Release + copy DLL into `$MYCOPUNK_DIR/BepInEx/plugins` |
 | `mise run dump` | Deploy + headless launch + wait for `data.json` (~20s) |
 | `mise run copy-dump` | Copy `$MYCOPUNK_DIR/data.json` into the repo |
-| `mise run probe` | Like `dump` but with `Probe.cs` enabled — writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, subclasses.txt, samples/}` for exploration before adding a new dumper |
+| `mise run probe` | Like `dump` but with `Probe.cs` enabled — writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, catalogs/, global-fields.txt, components.txt, subclasses.txt, samples/}` for exploration before adding a new dumper |
+| `mise run coverage` | After `probe`: list ScriptableObject catalogs, `Global` fields and prefab component types the dumper doesn't reference yet |
 | `mise run diff <old.json> <new.json> [section[/key]]` | Side-by-side diff of two dumps (strips noisy `instanceID`/`ID`) |
 | `mise run decompile` | Re-decompile `Assembly-CSharp.dll` into `./decompiled/` |
 | `mise run extract-labels` | Static-analyze decompiled `UpgradeProperty_*.cs` for localization keys hidden behind switches/conditionals → `property-labels.json` (auto-merged into the next `mise run dump`) |
@@ -104,7 +110,9 @@ src/
     Builders.Gears.cs        # BuildGear/Character/Quip/LevelUnlock
     Builders.Resources.cs    # BuildResource/Rarities/Crafting
     Builders.Missions.cs     # BuildMission/Objective/MissionModifier/Region
-    Builders.Enemies.cs      # BuildEnemy/CustomWave/EnemyGroup
+    Builders.Enemies.cs      # BuildEnemy/CustomWave/EnemyGroup + enemyParts catalog (PartFields)
+    Builders.Scaling.cs      # difficulty/economy/missionGeneration + ThreatModifier/WeightedArray/curve flatteners
+    Builders.WorldObjects.cs # hazards + interactables
     Builders.Combat.cs       # BuildStatusEffect/Stack/Threat/LootPool
     Builders.Directives.cs   # BuildDirective/GlobalEvent
     Builders.Misc.cs         # BuildCollectable/Dialogue/QuipEntry
@@ -115,12 +123,12 @@ src/
 
 Repo-root siblings (not source):
 - `mise.toml` + `mise-tasks/` — build / dump / probe / render-skins / release pipeline
-- `tools/` + `scripts/` — Python helpers (diff.py, etc.)
+- `tools/` + `scripts/` — Python helpers (diff.py, coverage.py, etc.)
 - `decompiled/` — gitignored; populated by `mise run decompile` and read for reference
-- `data.schema.json` + `SCHEMA_CHANGES.md` — consumer-facing schema + change log
+- `data.schema.json` — consumer-facing schema
 
 - **`Plugin.cs`** — BepInEx entry point. `Start()` walks `Global.Instance.AllGear`, `Global.Instance.Characters`, and the global ScriptableObject catalogs (`Resources.FindObjectsOfTypeAll<T>()`), then serializes to `Paths.GameRootPath/data.json` via Newtonsoft.Json. The `Plugin` class is `partial` — every `Build<X>` lives in `Builders/Builders.<Section>.cs`.
-- **`Probe.cs`** — runtime introspection helper, gated by `$MYCOPUNK_DIR/probe.flag`. Dumps type maps, subclass discovery, and SO samples into `$MYCOPUNK_DIR/probe/` to scaffold new dumpers.
+- **`Probe.cs`** — runtime introspection helper, gated by `$MYCOPUNK_DIR/probe.flag`. Dumps type maps, subclass discovery, SO samples and a full inventory (every SO catalog before/after `Resources.LoadAll`, every `Global` field, prefab component counts) into `$MYCOPUNK_DIR/probe/` to scaffold new dumpers; `mise run coverage` diffs that inventory against `src/`.
 - **`SkinRenderer.cs` + `Rendering/`** — render-skins-flag-gated routine that drives the game's render-to-texture path to produce one 360° turntable per `(gear, skin, modifier)` combination plus a no-modifier base. `SkinRenderer.cs` holds the `Run()` entry, the nested `RenderDriver` MonoBehaviour, and the `RenderAll` orchestration coroutine; `Rendering/SkinRenderer.{Setup,Frame,Teardown,Helpers}.cs` are partial files with the per-skin setup, per-frame capture, restore, and reusable helpers (bounds compute, layer recursion, manual VFX-crab spawn). Outputs JPGs that `mise-tasks/render-skins` then encodes to mp4.
 - **`Serialization/NativeConverter.cs`** — Newtonsoft `JsonConverter` for Unity-native types (`HexMap`, `UpgradeProperty`, `DirectiveProperty`). Delegates to `JsonUtility.ToJson`, post-processes Unity's bare `Infinity`/`NaN` tokens into RFC 8259-valid JSON, and enriches every `{"instanceID": N}` with a `"@ref": "<type>:<key>"` cross-reference.
 - **`Models/*.cs`** (DTOs) — one file per top-level catalog (`Upgrade.cs`, `Gear.cs`, `Mission.cs`, `Enemy.cs`, …). Game enums are flattened to strings; cycles are dropped via Newtonsoft's `ReferenceLoopHandling.Ignore`.

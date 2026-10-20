@@ -12,4 +12,13 @@ public class Region
     public bool LockRegion;
     public Upgrade.DIcon Icon;
     public MissionEntry.SceneRef[] Scenes;
+    public Profile[] WorldProfiles;
+
+    public class Profile
+    {
+        public string Name;                  // WorldProfile asset name
+        public string LocationNameID;
+        public string LocationName;          // localized
+        public string[] DefaultEncounters;   // keys into `encounters`
+    }
 }

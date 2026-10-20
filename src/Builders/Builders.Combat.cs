@@ -66,7 +66,9 @@ partial class Plugin
         TimeOutDuration = p.TimeOutDuration,
         TimeoutOnLevelLoad = p.TimeoutOnLevelLoad,
         DisplayOnHUD = GetPrivateField<bool>(p, "DisplayOnHUD"),
-        Icon = BuildIcon(p.Icon)
+        Icon = BuildIcon(p.Icon),
+        Subclass = p.GetType().Name,
+        RawData = p
     };
 
     private static Threat BuildThreat(ThreatData t)

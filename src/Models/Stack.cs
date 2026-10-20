@@ -10,4 +10,7 @@ public class Stack
     public bool TimeoutOnLevelLoad;
     public bool DisplayOnHUD;
     public Upgrade.DIcon Icon;
+    public string Subclass;            // C# class name ("PlayerStackData" or e.g. "AntigravStack")
+    [Newtonsoft.Json.JsonConverter(typeof(NativeConverter))]
+    public PlayerStackData RawData;    // subclass-specific tunables live here
 }

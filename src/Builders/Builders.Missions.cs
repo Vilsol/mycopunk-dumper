@@ -189,7 +189,8 @@ partial class Plugin
             XPMultiplier = m.XPMultiplier,
             Color = ColorAsString(m, "Color"),
             TextColor = m.TextColor.ToString(),
-            Icon = BuildIcon(m.Icon)
+            Icon = BuildIcon(m.Icon),
+            RawData = m
         };
         var im = GetPrivateField<Mission[]>(m, "incompatibleMissions");
         if (im != null) entry.IncompatibleMissions = im.Where(x => x != null).Select(x => x.ID).ToArray();
@@ -229,6 +230,14 @@ partial class Plugin
             }
             r.Scenes = list.ToArray();
         }
+
+        r.WorldProfiles = w.WorldProfiles?.Where(p => p != null).Select(p => new Region.Profile
+        {
+            Name = p.name,
+            LocationNameID = p.LocationNameID,
+            LocationName = p.LocationName,
+            DefaultEncounters = p.defaultEncounters?.Where(e => e != null).Select(e => e.name).ToArray()
+        }).ToArray();
 
         return r;
     }

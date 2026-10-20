@@ -14,6 +14,7 @@ public class DumpFile
     public SortedDictionary<string, ObjectiveEntry> objectives;
     public SortedDictionary<string, Region> regions;
     public SortedDictionary<string, Enemy> enemies;
+    public SortedDictionary<string, EnemyPartPrefab> enemyParts;       // part prefabs referenced by enemies/economy, keyed by prefab name
     public SortedDictionary<string, StatusEffectEntry> statusEffects;
     public SortedDictionary<string, Stack> stacks;
     public SortedDictionary<string, Threat> threats;
@@ -49,6 +50,13 @@ public class DumpFile
     public SortedDictionary<string, GridProfileEntry> gridProfiles;    // per-level upgrade-grid size curves
     public SortedDictionary<string, PlanetEntry> planets;             // planet biome-composition arrays
     public SortedDictionary<string, FulfillmentEntry> fulfillments;   // in-game achievements/challenges: condition, score, reward
+    public Difficulty difficulty;                                      // Global threat × player-count enemy scaling
+    public Economy economy;                                            // Global mission rewards, drop chances, rarity weights
+    public SortedDictionary<string, MissionEventEntry> missionEvents;  // Global.MissionEvents — random mid-mission events
+    public MissionGeneration missionGeneration;                        // Global modifier-count + side-objective roll parameters
+    public CombatGlobals combatGlobals;                                // Global lightning-fork damage + core explosion falloff
+    public Upgrade.DProperty[] genericStatUpgrades;
+    public SortedDictionary<string, WorldObject> worldObjects;        // hazard + interactable prefabs (hornet, turret, shrooms, collectables, …), keyed by prefab name                    // Global.GenericPlayerStatUpgrades — random stat pool for ApplyStatUpgrades upgrades
 }
 
 /// <summary>
