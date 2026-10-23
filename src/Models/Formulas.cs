@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace MycopunkDumper;
 
 /// <summary>
@@ -14,6 +16,28 @@ public class Formulas
     public XPCurve[] XPCurves;
 
     public string MissionXP;            // Global.GetMissionXP, in terms of `economy` / `missions` / `missionContainers` fields
+
+    public Formula RarityLevelBonus;            // Global.GetWeightedRarity
+    public Formula DirectiveThreatBonus;        // DirectiveManager.ApplyThreatMultiplier
+    public Formula OuroBossHealth;              // OuroObjective.SpawnBossCoroutine
+    public Formula LotteryLarry;                // LotteryLarry spin cost / skin pick
+    public Dictionary<string, DroneRarity[]> DroneRarityCycles; // keyed by class: UpgradeDrone, DroneHalo
+
+    public class Formula
+    {
+        public string Description;
+        public string Expression;
+        public Dictionary<string, string> Inputs;      // name -> where it comes from (dump path or runtime state)
+        public Dictionary<string, float> Constants;    // code literals
+    }
+
+    public class DroneRarity
+    {
+        public string Rarity;
+        public float Weight;
+        public float MinSeconds;
+        public float MaxSeconds;
+    }
 
     public class XPCurve
     {

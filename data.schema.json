@@ -1814,7 +1814,39 @@
             }
           }
         },
-        "MissionXP": { "type": "string", "description": "Global.GetMissionXP: mission-completion XP in terms of `economy`, `missions[].MissionXPMultiplier` and the mission container's GetXPMultiplier() (1 for DefaultMissionContainer)." }
+        "MissionXP": { "type": "string", "description": "Global.GetMissionXP: mission-completion XP in terms of `economy`, `missions[].MissionXPMultiplier` and the mission container's GetXPMultiplier() (1 for DefaultMissionContainer)." },
+        "RarityLevelBonus": { "$ref": "#/$defs/FormulaEntry", "description": "Global.GetWeightedRarity: player-level bonus on one economy.RarityWeights slot (Inputs.bonusSlot names it) plus the low-level Epic+ reroll." },
+        "DirectiveThreatBonus": { "$ref": "#/$defs/FormulaEntry", "description": "DirectiveManager.ApplyThreatMultiplier: additive directive progress bonus by threat." },
+        "OuroBossHealth": { "$ref": "#/$defs/FormulaEntry", "description": "Ouroboros boss health multiplier; inputs reference objectives.OuroObjective.RawData." },
+        "LotteryLarry": { "$ref": "#/$defs/FormulaEntry", "description": "Lottery Larry spin cost, skin pool and rare-spin seed selection." },
+        "DroneRarityCycles": {
+          "type": "object",
+          "description": "Rarity cycling of upgrade drones, keyed by class (`UpgradeDrone`, `DroneHalo`). Each cycle picks a rarity by Weight, then holds it for uniform(MinSeconds, MaxSeconds). Read from the classes' static rarityDurations.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["Rarity", "Weight", "MinSeconds", "MaxSeconds"],
+              "properties": {
+                "Rarity": { "type": "string" },
+                "Weight": { "type": "number" },
+                "MinSeconds": { "type": "number" },
+                "MaxSeconds": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "FormulaEntry": {
+      "type": "object",
+      "description": "A formula transcribed from game code. `Constants` are code literals; `Inputs` maps each other symbol in `Expression` to its dump path or runtime source.",
+      "required": ["Description", "Expression"],
+      "properties": {
+        "Description": { "type": "string" },
+        "Expression": { "type": "string" },
+        "Inputs": { "type": "object", "additionalProperties": { "type": ["string", "null"] } },
+        "Constants": { "type": "object", "additionalProperties": { "type": "number" } }
       }
     },
 

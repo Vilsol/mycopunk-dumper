@@ -682,7 +682,12 @@ public partial class Plugin : BaseUnityPlugin
                     new Formulas.XPCurve { Context = "gear_1_to_5", Description = "Per-gear XP, levels 1..5. Formula: 50 * (level+1)^1.9 + 0.", LevelOffset = 0, Coefficient = 50f, Power = 1.9f, Add = 0 },
                     new Formulas.XPCurve { Context = "gear_6_plus", Description = "Per-gear XP, levels 6+. Formula uses (level-5) as input.", LevelOffset = 5, Coefficient = 33f, Power = 1.8f, Add = 1064 }
                 },
-                MissionXP = "ceil(economy.ResourceAmountMultiplier[threat-1] * economy.IntensityScripAndXPMultiplier[intensity] * round(economy.BaseMissionXP * mission.MissionXPMultiplier * missionContainerXPMultiplier))"
+                MissionXP = "ceil(economy.ResourceAmountMultiplier[threat-1] * economy.IntensityScripAndXPMultiplier[intensity] * round(economy.BaseMissionXP * mission.MissionXPMultiplier * missionContainerXPMultiplier))",
+                RarityLevelBonus = BuildRarityLevelBonus(),
+                DirectiveThreatBonus = BuildDirectiveThreatBonus(),
+                OuroBossHealth = BuildOuroBossHealth(),
+                LotteryLarry = BuildLotteryLarry(),
+                DroneRarityCycles = BuildDroneRarityCycles()
             },
             achievements = new[] {
                 "4_MODS", "ABOMINATION", "FULL_CREW", "HORNET_MELEE", "KILL_PLAYER",
