@@ -732,6 +732,7 @@ public partial class Plugin : BaseUnityPlugin
             root["worldObjects"] = Newtonsoft.Json.Linq.JToken.FromObject(dump.worldObjects, JsonSerializer.Create(settings));
         }
         catch (Exception ex) { Logger.LogError($"Scene world objects failed: {ex}"); }
+        yield return DumpSceneSections(root, settings);
 
         InjectPlainTextSiblings(root);
         // Write-then-rename so the dump task never sees a partial file.

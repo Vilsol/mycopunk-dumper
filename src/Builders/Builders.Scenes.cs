@@ -24,6 +24,7 @@ partial class Plugin
     private static IEnumerator LoadDumpScenes()
     {
         Application.backgroundLoadingPriority = ThreadPriority.High;
+        HookSceneInventory();
         var start = Time.realtimeSinceStartup;
         foreach (var (scene, _, _) in DumpScenes)
         {

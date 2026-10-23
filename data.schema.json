@@ -264,6 +264,40 @@
       "type": "object",
       "description": "Hazard and interactable prefabs, keyed by prefab/asset name (Unity \" (n)\" duplicate suffixes collapsed). Sources: Global.HornetPrefab, HardonTurret, MortarBullet, laserBullets[i] (indexed by LaserArmTip damageEffect), Explodunguses, HealCollectableLarge/SmallPrefab, GenericResourceCollectable, TossResourceCollectable, OverclockedExplosion, AntigravityField; ScrapperGear.grapplePolePrefab; plus every loaded ExplodingTarget, VolatileExplosive, DamageOnHit, AmmoCollectable, LaunchPad, SafetyBubble prefab and AcidFlyTrapData asset. Components use the same shape as `enemyParts` (Fields extraction identical). Notes: ObjectTarget subclasses (Hornet, HostileTurret, ExplodingTarget/AcidShroom/LightningShroom) carry base `maxHealth`; AcidShroom ignores `damage` and spawns Global.AcidPuddlePrefab (5 s lifetime, size = explosionRadius); LightningShroom ignores `damage` and forks combatGlobals lightning damage (range = explosionRadius, 20 hits); LaserBullet/MortarBullet damage comes from the firing enemy part; VolatileExplosive radius × EnemyManager.EnemyExplosionSizeMultiplier; ResourceCollectable `resource` is a `resources` key (Generic sets it at runtime); SafetyBubble `safetyStack`/`damageStack` are `stacks` keys. Scene-only objects: Hub (`hub`: SpeedBattery, CableCar, Ropevator, CargoElevator, MovingPiston, NetworkSpinningFan, HubCannon, SkillPointCrafter — extra `cost` array of {resource, count}) and RhomProc (`boss`: Rhombomination with core/inner/outer shell health, `playerHealthMultiplier` {Values, PerExtraPlayer}, `threatHealthMultiplier` (per threat), `timeBetweenAttacks`, and one nested object per attack (fastSpikeAttack, explosiveSpewAttack, lasersAttack, suicideDroneAttack, iceWaveAttack) holding its fields plus `Subclass` and prefab names; attack projectiles SpikeProjectile/ExplosiveRigidbody/SuicideTriangle are their own `boss` entries). Scene entries are absent if the scene fails to load within 30s.",
       "additionalProperties": { "$ref": "#/$defs/WorldObject" }
+    },
+    "levels": {
+      "type": "object",
+      "description": "Every build scene with a LevelData component, keyed by scene name. Scenes are loaded additively one at a time after the main dump (roots deactivated in sceneLoaded, so no Start/Update runs) and unloaded again; Hub is read during its worldObjects load. Scenes that don't load within the shared scene budget are absent.",
+      "additionalProperties": {
+        "$ref": "#/$defs/Level"
+      }
+    },
+    "enemyManager": {
+      "type": "object",
+      "description": "Scene EnemyManager spawn configs (group weights, custom waves, intensity ramp, spawn distances, type limits, boss). `Default` is the config most scenes share; `Scenes` lists every scene with an EnemyManager and only the fields where it differs.",
+      "required": [
+        "Default",
+        "Scenes"
+      ],
+      "properties": {
+        "Default": {
+          "$ref": "#/$defs/EnemyManagerFields"
+        },
+        "Scenes": {
+          "type": "object",
+          "description": "Scene name -> fields that differ from `Default` (same keys/shapes as EnemyManagerFields; null = unset in that scene). {} = identical to Default.",
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "dataLogs": {
+      "type": "object",
+      "description": "Codex datalogs keyed by log ID (the PlayerData.discoveredDataLogs value). `folder/name` IDs are grouped into a codex folder. Covers every ID referenced by a scene TextLogInteractable, prefab, IncursionMission floor unlock or GlobalEvent start/end log, plus any datalogs-bundle texture none of those reference.",
+      "additionalProperties": {
+        "$ref": "#/$defs/DataLog"
+      }
     }
   },
 
@@ -2347,6 +2381,285 @@
               "Text": { "type": "string", "description": "Resolved line text (block at line index N under the exchange's TextBlocks key)." }
             }
           }
+        }
+      }
+    },
+    "Level": {
+      "type": "object",
+      "required": [
+        "BuildIndex",
+        "Path",
+        "LevelFlags"
+      ],
+      "properties": {
+        "BuildIndex": {
+          "type": "integer"
+        },
+        "Path": {
+          "type": "string",
+          "description": "Unity scene asset path."
+        },
+        "LocationName": {
+          "type": "string",
+          "description": "LevelData.LocationName, already localized by LevelData.Awake; empty for procedural scenes (TerrainGenerator names them at runtime)."
+        },
+        "Region": {
+          "type": "string",
+          "description": "`regions` key of LevelData.Region (or the WorldRegion asset name if it is not in Global.Regions)."
+        },
+        "LevelFlags": {
+          "type": "string",
+          "description": "LevelFlags flag-enum stringified."
+        },
+        "MaxRailgunAngle": {
+          "type": "number"
+        },
+        "Collectables": {
+          "type": "object",
+          "description": "PunchCollectable count per `collectables` key placed in the scene (counted before Awake-time Destroy of ones the save already collected).",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "DataLogs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "`dataLogs` keys of TextLogInteractables in the scene."
+        }
+      }
+    },
+    "EnemyManagerFields": {
+      "type": "object",
+      "description": "EnemyManager serialized fields (PartFields bag: numbers/bools/enums/ranges, plus constants) and the flattened wrappers below.",
+      "properties": {
+        "enemyClassGroups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WeightedEntry"
+          },
+          "description": "Keys are `enemyGroups` keys (or `sceneEnemyGroups`)."
+        },
+        "customWaves": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WeightedEntry"
+          },
+          "description": "Keys are `customWaves` keys (or `sceneCustomWaves`)."
+        },
+        "customWaveChance": {
+          "type": "number"
+        },
+        "GruntClasses": {
+          "type": "string"
+        },
+        "bossClass": {
+          "type": "string",
+          "description": "`enemies` key (EnemyClass ID, or APIName for ID-less scene-only classes)."
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "minSpawnDistance": {
+          "type": "number"
+        },
+        "maxSpawnDistance": {
+          "type": "number"
+        },
+        "enableAmbientWave": {
+          "type": "boolean"
+        },
+        "enemyTypeLimits": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Max living enemies per limited EnemyType (grunt, brute, abomination)."
+        },
+        "enemyIntensitySettings": {
+          "type": "array",
+          "description": "WaveData per enemy-intensity level.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "maxLivingEnemies": {
+                "type": "integer"
+              },
+              "minSpawnGroupInterval": {
+                "$ref": "#/$defs/MinMax"
+              },
+              "minSpawnGroupIntervalAfterSlotsAreOpen": {
+                "$ref": "#/$defs/MinMax"
+              },
+              "groupSize": {
+                "$ref": "#/$defs/MinMax"
+              },
+              "minOpenEnemySlotsToSpawnNextGroup": {
+                "type": "integer"
+              },
+              "enemyIntensityDecayCooldown": {
+                "type": "number"
+              },
+              "globalIntensityIncreaseInterval": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "enemyIntensityDecayCooldownMultiplier": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Per threat level."
+        },
+        "globalEnemyIntensityIncreaseSpeed": {
+          "type": "number"
+        },
+        "globalEnemyIntensityIncreaseSpeedMultiplier": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Per threat level."
+        },
+        "timeBeforeIncreasingGlobalEnemyIntensity": {
+          "type": "number"
+        },
+        "sceneCustomWaves": {
+          "type": "object",
+          "description": "Custom waves that exist only in scenes (not in `customWaves`).",
+          "additionalProperties": {
+            "$ref": "#/$defs/CustomWave"
+          }
+        },
+        "sceneEnemyGroups": {
+          "type": "object",
+          "description": "Enemy groups that exist only in scenes (not in `enemyGroups`).",
+          "additionalProperties": {
+            "$ref": "#/$defs/EnemyGroup"
+          }
+        }
+      }
+    },
+    "DataLog": {
+      "type": "object",
+      "required": [
+        "Kind",
+        "Sources"
+      ],
+      "properties": {
+        "Kind": {
+          "enum": [
+            "text",
+            "image"
+          ],
+          "description": "text = TextBlocks entry keyed by the ID; image = Texture2D in the StreamingAssets `datalogs` bundle (the game's own test: TextBlocks.strings.ContainsKey(id))."
+        },
+        "Folder": {
+          "type": "string",
+          "description": "Codex folder (ID prefix before the last '/'); absent = root list."
+        },
+        "FolderLabel": {
+          "type": "string",
+          "description": "TextBlocks.GetString(Folder, 0)."
+        },
+        "CodexLabel": {
+          "type": "string",
+          "description": "Codex list button text: the title for text logs; a fake file name for image logs (`<name>.pdf` in folders, `<id>.<jpg|png|pdf>` at the root)."
+        },
+        "Title": {
+          "type": "string",
+          "description": "text: TextBlocks index 0; image: \"Data Log // <Date>\" as ImageLogWindow shows it."
+        },
+        "Body": {
+          "type": "string",
+          "description": "text: TextBlocks index 1."
+        },
+        "Date": {
+          "type": "string",
+          "description": "image: LogDates.txt entry from the bundle."
+        },
+        "Image": {
+          "type": "object",
+          "required": [
+            "Asset",
+            "Width",
+            "Height"
+          ],
+          "properties": {
+            "Asset": {
+              "type": "string",
+              "description": "Texture2D name in the `datalogs` bundle."
+            },
+            "Width": {
+              "type": "integer"
+            },
+            "Height": {
+              "type": "integer"
+            },
+            "Format": {
+              "type": "string",
+              "description": "TextureFormat."
+            },
+            "Readable": {
+              "type": "boolean",
+              "description": "Texture2D.isReadable — false means pixel export needs a GPU blit."
+            }
+          }
+        },
+        "Sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DataLogSource"
+          }
+        }
+      }
+    },
+    "DataLogSource": {
+      "type": "object",
+      "required": [
+        "Kind"
+      ],
+      "properties": {
+        "Kind": {
+          "enum": [
+            "scene",
+            "incursion",
+            "globalEvent",
+            "prefab"
+          ]
+        },
+        "Scene": {
+          "type": "string",
+          "description": "scene: `levels` key / build scene name."
+        },
+        "Count": {
+          "type": "integer",
+          "description": "scene: TextLogInteractables with this ID in the scene."
+        },
+        "Mission": {
+          "type": "string",
+          "description": "incursion: `missions` key."
+        },
+        "MinFloor": {
+          "type": "integer",
+          "description": "incursion: offered after reaching this floor."
+        },
+        "GlobalEvent": {
+          "type": "string",
+          "description": "globalEvent: `globalEvents` key."
+        },
+        "Trigger": {
+          "enum": [
+            "start",
+            "end"
+          ]
+        },
+        "Prefab": {
+          "type": "string",
+          "description": "prefab: root name of the prefab asset holding the TextLogInteractable."
         }
       }
     }
