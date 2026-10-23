@@ -44,6 +44,10 @@ internal static class Probe
     {
         if (_root == null) yield break;
         // Add post-dump probe coroutines here.
+        // Reachability first, so it walks the post-dump state rather than scene/bundle leftovers.
+        List<KeyValuePair<string, object>> staticRoots = new();
+        try { staticRoots = ProbeStatics.Write(_root); } catch (Exception e) { Plugin.Log.LogError($"ProbeStatics failed: {e}"); }
+        yield return ProbeReachability.Run(_root, staticRoots);
         yield return ProbeContent.Run(_root);
         File.WriteAllText(Path.Combine(_root, "done"), "");
     }
@@ -954,7 +958,7 @@ internal static class Probe
         }
     }
 
-    private static string RenderValue(object v)
+    internal static string RenderValue(object v)
     {
         if (v == null) return "null";
         if (v is UnityEngine.Object uo) return uo == null ? "<destroyed>" : $"<{uo.GetType().Name} iid={uo.GetInstanceID()} name=\"{uo.name}\">";
@@ -1043,7 +1047,7 @@ internal static class Probe
         catch (Exception e) { return $"<newton failed: {e.Message}>"; }
     }
 
-    private static string Pretty(Type t)
+    internal static string Pretty(Type t)
     {
         if (t.IsGenericType)
         {

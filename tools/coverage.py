@@ -27,7 +27,7 @@ GENERIC = {"ScriptableObject", "MonoBehaviour", "NetworkBehaviour", "Object", "C
 
 
 def short(full):
-    return re.split(r"[.+]", full)[-1]
+    return re.split(r"[.+]", re.sub(r"<.*", "", full))[-1]
 
 
 def ancestors(t):
@@ -100,3 +100,62 @@ print("\n## Asset types in StreamingAssets bundles not referenced by the dumper"
 for n, t, where in aggregate("bundle-assets.txt"):
     if not covered(short(t)):
         print(f"{n:>6}  {t}  [{chain(short(t))}]  {where}")
+
+
+# UI widgets dominate reachability via menu/HUD prefabs and are never dump material.
+UI = {"Graphic", "MaskableGraphic", "Selectable", "Button", "UIBehaviour", "ICharacterGraphic", "ISettingsOption"}
+
+
+def static_root_covered(paths):
+    """All example paths start at a static field the dumper reads (e.g. TextBlocks.strings)."""
+    roots = [re.match(r"static:[\w.+]+\.(\w+)", p) for p in paths]
+    return bool(paths) and all(m and m[1] in idents for m in roots)
+
+
+reach = probe / "reachability.txt"
+if reach.exists():
+    print("\n## Reachable game types with undumped instances (top 50, type + ancestors not in src/)")
+    print("# uncovered  total  type  [ancestors]   → example path")
+    entries, cur = [], None
+    for line in reach.read_text().splitlines():
+        if line.startswith("## "):
+            break
+        m = re.match(r"\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$", line)
+        if m:
+            cur = [int(m[1]) - int(m[2]) - int(m[3]), int(m[1]), m[5], []]
+            entries.append(cur)
+        elif cur and line.startswith("    path: "):
+            cur[3].append(line[len("    path: "):])
+    rows, ui = [], 0
+    for e in entries:
+        t = short(e[2])
+        if e[0] <= 0 or covered(t) or static_root_covered(e[3]):
+            continue
+        if e[2].startswith("Pigeon.UI.") or UI & set(ancestors(t)):
+            ui += 1
+            continue
+        rows.append(e)
+    rows.sort(key=lambda r: -r[0])
+    for unc, n, t, paths in rows[:50]:
+        print(f"{unc:>8} {n:>6}  {t}  [{chain(short(t))}]\n           → {paths[0] if paths else '?'}")
+    print(f"# {len(rows)} uncovered reachable types total ({ui} UI widget types hidden)")
+
+unemitted = probe / "unemitted-fields.txt"
+if unemitted.exists():
+    print("\n## Fields on dumped types with values but never emitted (name not in data.json keys or src/)")
+    for line in unemitted.read_text().splitlines():
+        m = re.match(r"\s*\d+/\d+\s+(\S+)\.(\w+) :", line)
+        if m and m[2] not in idents:
+            print(line.strip())
+
+statics = probe / "static-fields.txt"
+if statics.exists():
+    print("\n## Static collections (count > 0) not referenced by the dumper")
+    owner = None
+    for line in statics.read_text().splitlines():
+        if line.startswith("## "):
+            owner = line[3:]
+        m = re.match(r"\s+(?:const |readonly )?(\w+) : .*? = <.*? count=(\d+)>", line)
+        # skip scratch buffers/pools — runtime plumbing, not data
+        if m and int(m[2]) > 0 and m[1] not in idents and not re.search(r"(?i)buffer|pool", m[1]) and " : Char[]" not in line:
+            print(f"{owner}.{line.strip()[:200]}")
