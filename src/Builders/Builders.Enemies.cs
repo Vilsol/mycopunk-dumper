@@ -87,6 +87,16 @@ partial class Plugin
         var customLoot = e.CustomLoot.Properties;
         if (customLoot != null) en.CustomLoot = customLoot.Where(x => x != null).Select(BuildLevelUnlock).ToArray();
 
+        var oc = e.OuroborosChance;
+        en.OuroborosChance = new Enemy.SpawnChance { MinLevel = oc.MinLevel, MaxLevel = oc.MaxLevel, Chance = RangeValues(oc.SpawnChance) };
+        if (e.customSpawner != null)
+            en.CustomSpawner = new Enemy.CustomSpawnerEntry
+            {
+                Name = e.customSpawner.name,
+                Subclass = e.customSpawner.GetType().Name,
+                Fields = PartFields(e.customSpawner, null)
+            };
+
         return en;
     }
 

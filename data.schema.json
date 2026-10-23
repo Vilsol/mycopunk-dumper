@@ -246,6 +246,11 @@
       "$ref": "#/$defs/MissionGeneration",
       "description": "Global mission-roll parameters: how many modifiers a generated mission gets, which modifiers, and side-objective spawning."
     },
+    "keywords": {
+      "type": "object",
+      "description": "Tooltip keyword glossary from static Keywords.keywords, built at startup from every TextBlocks group whose block[0] carries `keyword` metadata. Keyed by that group ID (a `localization` key). In-game text marks keywords with [brackets]; any synonym resolves (case-insensitive) to the same entry.",
+      "additionalProperties": { "$ref": "#/$defs/Keyword" }
+    },
     "combatGlobals": {
       "$ref": "#/$defs/CombatGlobals",
       "description": "Shared damage tuning on Global.Instance (lightning fork damage, overclocked core explosion falloff)."
@@ -960,6 +965,7 @@
         "MinUnlockLevel": { "type": "integer", "description": "Player level required before this gear becomes available." },
         "UnlockAutomatically": { "type": "boolean", "description": "If true, unlocks without spending UnlockCost." },
         "HideWhenNotCollected": { "type": "boolean", "description": "UI hint — hide from collection screens until obtained." },
+        "UnlockState": { "type": "string", "enum": ["NotCollected", "Collected", "Unlocked"], "description": "GearInfo.UnlockState — initial PlayerData.UnlockState: Unlocked = starting gear, Collected = owned but must be unlocked (UnlockCost), NotCollected = must be found in the world first." },
         "CanGainXP": { "type": "boolean", "description": "Whether the gear levels up via XP gain." },
         "HasUpgradeGrid": { "type": "boolean", "description": "Whether the gear has an upgrade grid at all." },
         "XPGainMultiplier": {
@@ -1454,6 +1460,24 @@
           "type": "array",
           "description": "Extra rewards fired when this enemy is killed (LevelUnlockList from EnemyClass.CustomLoot). Same shape as gear LevelUnlocks. Most enemies have nothing here; bosses (e.g. Amalgamation) and special enemies (Pillabom, Missilehead) have entries.",
           "items": { "$ref": "#/$defs/LevelUnlockEntry" }
+        },
+        "OuroborosChance": {
+          "type": "object",
+          "description": "EnemyClass.OuroborosChance (SpawnChanceModifier) — multiplies this enemy's spawn weight. level = OuroMission.CurrentLevel (× (threat − 2) when threat > 3), −1 outside Ouro missions. Factor is 1 when level < 0 or MinLevel == MaxLevel == 0, else lerpUnclamped(Chance.Min, Chance.Max, inverseLerp(MinLevel, MaxLevel, level)).",
+          "properties": {
+            "MinLevel": { "type": "integer" },
+            "MaxLevel": { "type": "integer" },
+            "Chance": { "$ref": "#/$defs/MinMax" }
+          }
+        },
+        "CustomSpawner": {
+          "type": "object",
+          "description": "EnemyClass.customSpawner (CustomEnemySpawner SO) — bespoke spawn logic for bosses/special enemies. Fields extracted like `enemyParts` component Fields (e.g. ScrapBossSpawner `armorCount`).",
+          "properties": {
+            "Name": { "type": "string", "description": "Asset name." },
+            "Subclass": { "type": "string", "description": "e.g. ScrapBossSpawner, AmalgamationSpawner, JunkerSpawner." },
+            "Fields": { "type": "object" }
+          }
         }
       }
     },
@@ -1959,7 +1983,32 @@
         "MissionModifierCountCurve": { "$ref": "#/$defs/CurveData", "description": "Otherwise modifier count = round(curve.Evaluate(uniform 0..1))." },
         "MissionModifiers": { "type": "array", "description": "Weighted modifier picks; keys into `missionModifiers`.", "items": { "$ref": "#/$defs/WeightedEntry" } },
         "SideObjectiveSpawnChance": { "type": "number", "description": "At mission start (NormalMission, side objectives not disabled, non-procedural level) roll < this enables side content: up to 4 encounters spawn and side-objective spawning starts at 5% per 120 s check (+10% after each failed check)." },
-        "SideObjectives": { "type": "array", "description": "Weighted side-objective prefabs; keys into `objectives`.", "items": { "$ref": "#/$defs/WeightedEntry" } }
+        "SideObjectives": { "type": "array", "description": "Weighted side-objective prefabs; keys into `objectives`.", "items": { "$ref": "#/$defs/WeightedEntry" } },
+        "MissionItems": {
+          "type": "array",
+          "description": "Global.MissionItems — MissionManager.SpawnMissionItems_Server: per item, if rand < SpawnChance, spawn Count (inclusive range) copies at random reachable positions. Includes the GearBeacon (heavy-weapon drop).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Prefab": { "type": ["string", "null"], "description": "Prefab name." },
+              "SpawnChance": { "type": "number" },
+              "Count": { "$ref": "#/$defs/MinMax" },
+              "ExclusionRadius": { "type": "number" }
+            }
+          }
+        },
+        "HeavyWeapons": { "type": "array", "items": { "type": "string" }, "description": "Global.HeavyWeapons as `gears` keys. A GearBeacon without a preset gear picks one uniformly at random; opening its cargo pod spawns a crate with that weapon." },
+        "HeavyWeaponCrateLifetime": { "type": "number", "description": "Seconds before the heavy-weapon crate despawns (hardcoded in GearBeacon)." }
+      }
+    },
+    "Keyword": {
+      "type": "object",
+      "properties": {
+        "Key": { "type": "string", "description": "Primary term (keys[0], block[0] text split on ',' or '、')." },
+        "Synonyms": { "type": "array", "items": { "type": "string" }, "description": "Remaining keys that resolve to this keyword." },
+        "Color": { "type": "string", "description": "`color` metadata hex (e.g. \"#FF8C00\"); empty when absent or unparseable." },
+        "Description": { "type": ["string", "null"], "description": "Localized tooltip text (group block[1]), with rich-text markup." },
+        "PlainDescription": {"$ref": "#/$defs/PlainText"}
       }
     },
     "CombatGlobals": {

@@ -56,6 +56,7 @@ public class DumpFile
     public Economy economy;                                            // Global mission rewards, drop chances, rarity weights
     public SortedDictionary<string, MissionEventEntry> missionEvents;  // Global.MissionEvents — random mid-mission events
     public MissionGeneration missionGeneration;                        // Global modifier-count + side-objective roll parameters
+    public SortedDictionary<string, Keyword> keywords;                  // tooltip keyword glossary, keyed by localization group ID
     public CombatGlobals combatGlobals;                                // Global lightning-fork damage + core explosion falloff
     public Upgrade.DProperty[] genericStatUpgrades;
     public SortedDictionary<string, WorldObject> worldObjects;        // hazard + interactable prefabs (hornet, turret, shrooms, collectables, …), keyed by prefab name                    // Global.GenericPlayerStatUpgrades — random stat pool for ApplyStatUpgrades upgrades

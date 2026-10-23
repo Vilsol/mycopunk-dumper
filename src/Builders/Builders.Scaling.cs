@@ -115,7 +115,17 @@ partial class Plugin
             MissionModifierCountCurve = BuildCurve(g.MissionModifierCountCurve),
             MissionModifiers = WeightedValues(g.MissionModifiers, m => m?.ID.ToString()),
             SideObjectiveSpawnChance = g.SideObjectiveSpawnChance,
-            SideObjectives = WeightedValues(g.SideObjectives, o => o == null ? null : o.gameObject?.name ?? o.GetType().Name)
+            SideObjectives = WeightedValues(g.SideObjectives, o => o == null ? null : o.gameObject?.name ?? o.GetType().Name),
+            MissionItems = g.MissionItems?.Select(m => new MissionGeneration.MissionItem
+            {
+                Prefab = m.prefab?.name,
+                SpawnChance = m.spawnChance,
+                Count = RangeValues(m.count),
+                ExclusionRadius = m.exclusionRadius
+            }).ToArray(),
+            HeavyWeapons = g.HeavyWeapons?.Where(w => w != null)
+                .Select(w => w.GetComponent<IUpgradable>()?.Info?.APIName ?? w.name).ToArray(),
+            HeavyWeaponCrateLifetime = 120f   // literal in GearBeacon.OnCargoPodOpen_Server (SpawnHeavyWeaponCrate_ClientRpc)
         };
     }
 

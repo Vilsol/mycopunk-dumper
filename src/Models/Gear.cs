@@ -12,6 +12,7 @@ public class Gear
     public int MinUnlockLevel;
     public bool UnlockAutomatically;
     public bool HideWhenNotCollected;
+    public string UnlockState;              // PlayerData.UnlockState default for new profiles
     public bool CanGainXP;
     public bool HasUpgradeGrid;
     public float XPGainMultiplier;

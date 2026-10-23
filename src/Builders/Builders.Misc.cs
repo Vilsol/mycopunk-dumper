@@ -258,4 +258,22 @@ partial class Plugin
 
         return entry;
     }
+
+    // Keywords.keywords maps every synonym to a shared Keyword; dedupe by descriptionID (a `localization` key).
+    private static SortedDictionary<string, Keyword> BuildKeywords()
+    {
+        var map = new SortedDictionary<string, Keyword>();
+        foreach (var k in Keywords.keywords.Values)
+        {
+            if (k?.descriptionID == null || map.ContainsKey(k.descriptionID)) continue;
+            map[k.descriptionID] = new Keyword
+            {
+                Key = k.Key,
+                Synonyms = k.keys.Skip(1).ToArray(),
+                Color = k.colorHex,
+                Description = LocText(k.descriptionID, 1)
+            };
+        }
+        return map;
+    }
 }

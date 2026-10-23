@@ -23,6 +23,7 @@ partial class Plugin
         g.MinUnlockLevel = info.MinUnlockLevel;
         g.UnlockAutomatically = info.UnlockAutomatically;
         g.HideWhenNotCollected = info.HideWhenNotCollected;
+        g.UnlockState = info.UnlockState.ToString();
         g.CanGainXP = info.CanGainXP;
         g.HasUpgradeGrid = info.HasUpgradeGrid;
         g.XPGainMultiplier = info.XPGainMultilier; // game's spelling

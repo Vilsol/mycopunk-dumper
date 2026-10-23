@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace MycopunkDumper;
 
 public class Enemy
@@ -27,6 +29,22 @@ public class Enemy
     public string[] SpawnWithEnemy;              // prefab names instantiated on the core at spawn
     public EnemyConfig Config;
     public Gear.LevelUnlockEntry[] CustomLoot;   // additional drops awarded when this enemy is killed
+    public SpawnChance OuroborosChance;
+    public CustomSpawnerEntry CustomSpawner;
+
+    public class SpawnChance
+    {
+        public int MinLevel;
+        public int MaxLevel;
+        public MinMax<float> Chance;
+    }
+
+    public class CustomSpawnerEntry
+    {
+        public string Name;
+        public string Subclass;
+        public SortedDictionary<string, object> Fields;
+    }
 }
 
 public class EnemyConfig

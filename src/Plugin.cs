@@ -669,6 +669,7 @@ public partial class Plugin : BaseUnityPlugin
             economy = BuildEconomy(),
             missionEvents = BuildMissionEvents(),
             missionGeneration = BuildMissionGeneration(),
+            keywords = BuildKeywords(),
             combatGlobals = BuildCombatGlobals(),
             genericStatUpgrades = BuildGenericStatUpgrades(),
             worldObjects = BuildWorldObjects(),
