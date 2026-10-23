@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Offline IL scan of Assembly-CSharp.dll (no game launch): loc keys vs data.json, hard-coded constants, static tables, switch tables. Writes ./il-scan-out/. Extra args are passed through (--dll/--data/--src/--out)."
+set -euo pipefail
+
+dotnet build -c Release -v q --nologo tools/il-scan >/dev/null
+dotnet tools/il-scan/bin/Release/net8.0/il-scan.dll \
+    --dll "$MYCOPUNK_DIR/Mycopunk_Data/Managed/Assembly-CSharp.dll" \
+    --data "$MYCOPUNK_DIR/data.json" \
+    --src src \
+    --out il-scan-out \
+    "$@"
