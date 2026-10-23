@@ -56,3 +56,10 @@ if [[ -s "$LABELS" ]]; then
 else
     echo "(skipping label enrichment — run 'mise run extract-labels' to enable)"
 fi
+
+# Copy out while still holding the game lock — the next run (possibly from another
+# worktree) overwrites $DATA.
+OUT="$(dirname "$(realpath "$0")")/../dump-out"
+mkdir -p "$OUT"
+cp "$DATA" "$LOG" "$OUT/"
+echo "Copied to $(realpath "$OUT")/data.json"

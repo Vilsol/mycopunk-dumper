@@ -487,6 +487,7 @@ decompiled/
 data.json
 property-labels.json
 probe-out/
+dump-out/
 
 # Local Claude scratch / personal notes
 .claude/

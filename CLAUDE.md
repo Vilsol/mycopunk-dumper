@@ -31,7 +31,7 @@ mise run ci-dump     # CI-only: same contract as `dump` but launches Mycopunk.ex
 
 `release-version` honours two env vars: `DUMP_TASK` (default `dump`; CI sets it to `ci-dump`) selects the dump task it invokes, and `STEAM_MANIFEST_ID` (passed through to `release-dump`) gets stamped onto the new `index.json` entry as `steamManifestId` so the autonomous workflow can no-op when the Steam manifest gid hasn't moved. Locally, both unset → behaviour is unchanged from before. The dump-time enrichment with `property-labels.json` lives in `scripts/dump-enrich.py` (shared by `dump` and `ci-dump`); modify it there if you change the merge logic. `release-version` now runs `mise run extract-labels` between decompile and build so the enrichment is always fresh.
 
-`dump`, `probe` and `render-skins` hold `flock $MYCOPUNK_DIR/.game.lock` across deploy + run, so parallel worktrees queue for the single game install instead of swapping each other's DLL; `probe` copies its output into the worktree's `./probe-out/` (gitignored) while still holding the lock, and `coverage` reads from there.
+`dump`, `probe` and `render-skins` hold `flock $MYCOPUNK_DIR/.game.lock` across deploy + run, so parallel worktrees queue for the single game install instead of swapping each other's DLL; `probe` copies its output into the worktree's `./probe-out/` and `dump` copies data.json + log into `./dump-out/` (both gitignored) while still holding the lock; `coverage` reads `./probe-out/`.
 
 `mise run dump` requires Steam already running and these Steam launch options on the game (Properties → Launch Options):
 
