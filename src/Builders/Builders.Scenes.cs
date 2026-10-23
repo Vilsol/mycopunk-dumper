@@ -36,6 +36,25 @@ partial class Plugin
         }
     }
 
+    // Hub objects NRE every frame outside a real hub session (SpinningFan, EnemyManager, …) —
+    // harmless for a dump that quits right away, but it floods the log for anything that keeps running.
+    private static IEnumerator UnloadDumpScenes()
+    {
+        // Unloading spans several frames; deactivate every scene up front so none keeps ticking meanwhile.
+        foreach (var (scene, _, _) in DumpScenes)
+        {
+            var s = SceneManager.GetSceneByName(scene);
+            if (s.isLoaded) foreach (var go in s.GetRootGameObjects()) go.SetActive(false);
+        }
+        foreach (var (scene, _, _) in DumpScenes)
+        {
+            if (!SceneManager.GetSceneByName(scene).isLoaded) continue;
+            var op = SceneManager.UnloadSceneAsync(scene);
+            var t = Time.realtimeSinceStartup;
+            while (op != null && !op.isDone && Time.realtimeSinceStartup - t < SceneLoadTimeout) yield return null;
+        }
+    }
+
     private static void AddSceneObjects(SortedDictionary<string, WorldObject> map)
     {
         void Add(string category, string source, GameObject go, Func<MonoBehaviour, bool> keep, Action<MonoBehaviour, SortedDictionary<string, object>> extra = null)

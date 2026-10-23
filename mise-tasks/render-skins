@@ -36,21 +36,27 @@ EOF
 pkill -f "$GAME_PROC" >/dev/null 2>&1 || true
 sleep 2
 rm -rf "$OUT_DIR" "$DONE" "$LOG"
-touch "$FLAG"
+# Flag content = optional rotation cap for test runs (RENDER_LIMIT=3 mise run render-skins).
+echo "${RENDER_LIMIT:-}" > "$FLAG"
 
 steam "steam://rungameid/$MYCOPUNK_APPID" >/dev/null 2>&1 || true
-echo "Launched Mycopunk with skin-renderer enabled at $(date +%T); polling for completion (timeout 10min)…"
+echo "Launched Mycopunk with skin-renderer enabled at $(date +%T); polling for completion…"
 
-# 30 frames per skin × ~223 skin/gear combos = ~6700 renders × 1 frame at 60fps
-# ≈ 110s. Add menu load (~10s) + safety margin → cap at 900s.
-for i in $(seq 1 300); do
+# ~1000 rotations × 180 frames ≈ 180k frames, well past any fixed short timeout.
+# Instead wait until the done marker appears or the game exits without writing
+# it (crash / manual close). 6h hard cap as a last resort.
+started=0
+for i in $(seq 1 7200); do
     if [ -f "$DONE" ]; then break; fi
+    if pgrep -f "$GAME_PROC" >/dev/null; then started=1
+    elif [ "$started" = 1 ]; then break
+    fi
     sleep 3
 done
 rm -f "$FLAG"
 
 if [ ! -f "$DONE" ]; then
-    echo "ERROR: timeout — skin-previews.done never appeared. Last log lines:" >&2
+    echo "ERROR: skin-previews.done never appeared (game exited or 6h cap hit). Last log lines:" >&2
     tail -30 "$LOG" >&2 2>/dev/null || true
     exit 1
 fi
@@ -73,24 +79,27 @@ fi
 if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "ffmpeg not installed — leaving raw PNG frames at $OUT_DIR; install ffmpeg to auto-encode mp4s." >&2
 else
-    echo "Encoding mp4 turntables (12 fps loop, ~2.5s per skin)…"
-    encoded=0
-    for skin_dir in "$OUT_DIR"/*/; do
+    echo "Encoding mp4 turntables (24 fps, 7.5s loop per rotation) on $(nproc) workers…"
+    # 24 fps × 180 frames = 7.5s loop; -loop 0 doesn't apply to mp4 so consumers loop on play.
+    # One single-threaded ffmpeg per folder, $(nproc) at a time — many short jobs
+    # parallelize far better than x264's own threading on 180-frame clips.
+    encode_one() {
+        local skin_dir="${1%/}"
+        local skin_name
         skin_name=$(basename "$skin_dir")
-        out_mp4="$skin_dir/$skin_name.mp4"
-        # 12 fps × 30 frames = 2.5s loop; -loop 0 doesn't apply to mp4 so consumers loop on play.
-        # 24 fps × 180 frames = 7.5s loop. Frames are .jpg (uncompressed,
-        # ~1MB each — fast to write, ffmpeg reads natively).
         if ffmpeg -loglevel error -y \
             -framerate 24 -i "$skin_dir/frame_%03d.jpg" \
-            -c:v libx264 -pix_fmt yuv420p -crf 20 -preset fast \
-            "$out_mp4" 2>/dev/null
+            -c:v libx264 -pix_fmt yuv420p -crf 20 -preset fast -threads 1 \
+            "$skin_dir/$skin_name.mp4" 2>/dev/null
         then
-            encoded=$((encoded + 1))
-            # Reclaim disk: ~180 MB of TGA frames per skin → ~500 KB mp4.
+            # Reclaim disk: the JPG frames are ~100× the size of the mp4.
             rm -f "$skin_dir"/frame_*.jpg
         fi
-    done
+    }
+    export -f encode_one
+    find "$OUT_DIR" -mindepth 1 -maxdepth 1 -type d -print0 \
+        | xargs -0 -P "$(nproc)" -I{} bash -c 'encode_one "$1"' _ {}
+    encoded=$(find "$OUT_DIR" -name "*.mp4" | wc -l)
     echo "Encoded $encoded mp4s."
 fi
 

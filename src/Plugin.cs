@@ -71,7 +71,6 @@ public partial class Plugin : BaseUnityPlugin
         Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} is started!");
 
         Probe.Run();
-        SkinRenderer.Run();   // no-op unless render-skins.flag is present and rendering is enabled
 
         UpgradeMap.Clear();
         GearMap.Clear();
@@ -736,5 +735,9 @@ public partial class Plugin : BaseUnityPlugin
         File.Move(tmpPath, outputPath);
 
         Logger.LogInfo($"Wrote {outputPath}");
+
+        yield return UnloadDumpScenes();
+        // After the dump, so it never overlaps the additive scene loads above.
+        SkinRenderer.Run();   // no-op unless render-skins.flag is present and rendering is enabled
     }
 }

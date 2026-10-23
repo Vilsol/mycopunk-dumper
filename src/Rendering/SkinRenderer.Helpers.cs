@@ -32,6 +32,19 @@ internal static partial class SkinRenderer
             return r.Length == 0 ? "preset" : r;
         }
 
+        // CaptureScreenshotIntoRenderTexture lands upside down on top-left-origin
+        // APIs (D3D/Vulkan, i.e. everything under Proton).
+        private static void FlipRows(byte[] data, int stride, int rows)
+        {
+            var tmp = new byte[stride];
+            for (int top = 0, bottom = rows - 1; top < bottom; top++, bottom--)
+            {
+                Buffer.BlockCopy(data, top * stride, tmp, 0, stride);
+                Buffer.BlockCopy(data, bottom * stride, data, top * stride, stride);
+                Buffer.BlockCopy(tmp, 0, data, bottom * stride, stride);
+            }
+        }
+
         private static void SetLayerRecursively(GameObject go, int layer)
         {
             go.layer = layer;

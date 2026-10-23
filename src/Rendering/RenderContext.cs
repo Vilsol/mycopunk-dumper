@@ -70,6 +70,8 @@ internal static partial class SkinRenderer
             // Materials that the skin's Apply produced; we set _HueShift on these
             // each frame so the cycle hue without mutating the gear's shared assets.
             public List<SkinOverrideMaterial> lastSkinMaterials;
+            // VisualEffects on the instance + spawned crabs, refreshed on each re-Apply.
+            public List<UnityEngine.VFX.VisualEffect> vfx;
             // Camera transform pinned per skin so the menu's per-frame camera
             // animation can't drift our framing.
             public Vector3 camPos;

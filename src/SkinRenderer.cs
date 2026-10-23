@@ -29,8 +29,9 @@ namespace MycopunkDumper;
 /// </summary>
 internal static partial class SkinRenderer
 {
-    private const int RenderWidth = 512;
-    private const int RenderHeight = 512;
+    // Captured square side. The game window is switched to (2·RenderSize × RenderSize)
+    // for the run — capturing at native 4K (2160²) was the dominant per-frame cost.
+    private const int RenderSize = 1024;
     private const int FramesPerSkin = 180;       // frames spanning a full 360° rotation (2° per step); seed varies per frame
     // How far to sweep _HueShift within a segment. Using a sine ease (0→peak→0)
     // so hue is at neutral at segment boundaries and gently dips through the
@@ -48,6 +49,7 @@ internal static partial class SkinRenderer
 
     private static string _outDir;
     private static string _doneMarker;
+    private static int _maxRotations;
 
     public static void Run()
     {
@@ -58,6 +60,9 @@ internal static partial class SkinRenderer
             Plugin.Log.LogWarning("SkinRenderer: render-skins.flag set but the game is running in -batchmode -nographics. Remove those launch flags and re-run.");
             return;
         }
+
+        // Optional rotation cap for test runs: the flag file's content (empty/0 = all).
+        int.TryParse(File.ReadAllText(flag).Trim(), out _maxRotations);
 
         _outDir = Path.Combine(Paths.GameRootPath, "skin-previews");
         _doneMarker = Path.Combine(Paths.GameRootPath, "skin-previews.done");
@@ -88,10 +93,24 @@ internal static partial class SkinRenderer
         // skin-previews.done marker only fires after every JPG is on disk.
         private readonly List<Task> _pendingWrites = new List<Task>();
 
-        // Pooled capture texture — reused across all frames in a session
-        // (Screen.width/height don't change mid-run). Avoids a per-frame
-        // Texture2D alloc + Destroy, plus the GC churn of LOH allocations.
-        private Texture2D _captureTex;
+        // Pooled screen-copy target for AsyncGPUReadback — reused across all
+        // frames in a session (Screen.width/height don't change mid-run).
+        private RenderTexture _captureRT;
+        private RenderTexture _scaledRT;
+        // Readbacks requested but whose callback hasn't fired yet. Main-thread only.
+        private int _pendingReadbacks;
+
+        // Since 1.0 something in the start menu moves the main camera after our per-frame
+        // pin (frames 1+ came out empty). beginCameraRendering runs after all
+        // Update/LateUpdate and right before culling, so pinning there always wins.
+        private Camera _pinCam;
+        private Vector3 _pinPos;
+        private Quaternion _pinRot;
+
+        private void PinCamera(ScriptableRenderContext _, Camera c)
+        {
+            if (c == _pinCam) c.transform.SetPositionAndRotation(_pinPos, _pinRot);
+        }
 
         // Live progress text rendered via OnGUI at the top-left of the screen.
         // ReadPixels captures a CENTERED square `Min(sw, sh)` per side, so on a
@@ -102,17 +121,22 @@ internal static partial class SkinRenderer
         private void OnGUI()
         {
             if (string.IsNullOrEmpty(_statusText)) return;
+            // Clip to the side band so long names can't bleed into the capture square.
+            float band = (Screen.width - Mathf.Min(Screen.width, Screen.height)) / 2f - 20f;
+            if (band <= 0f) return;
             var style = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 22,
                 normal = { textColor = Color.white },
                 alignment = TextAnchor.UpperLeft,
                 richText = false,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
             };
             // Black drop-shadow for legibility against any background colour.
             var shadow = new GUIStyle(style) { normal = { textColor = Color.black } };
-            GUI.Label(new Rect(11f, 11f, 600f, 600f), _statusText, shadow);
-            GUI.Label(new Rect(10f, 10f, 600f, 600f), _statusText, style);
+            GUI.Label(new Rect(11f, 11f, band, 600f), _statusText, shadow);
+            GUI.Label(new Rect(10f, 10f, band, 600f), _statusText, style);
         }
 
         public IEnumerator RenderAll()
@@ -171,6 +195,25 @@ internal static partial class SkinRenderer
                 var savedTargetFps = Application.targetFrameRate;
                 QualitySettings.vSyncCount = 0;
                 Application.targetFrameRate = 0; // 0 = uncapped (>60fps possible)
+
+                // Shrink to a windowed 2:1 so the centered capture square is RenderSize²
+                // and the status OSD fits in the side bands. Takes effect a frame or two later.
+                var savedScreenW = Screen.width;
+                var savedScreenH = Screen.height;
+                var savedScreenMode = Screen.fullScreenMode;
+                Screen.SetResolution(RenderSize * 2, RenderSize, FullScreenMode.Windowed);
+                for (int i = 0; i < 30 && Screen.height != RenderSize; i++) yield return null;
+                Plugin.Log.LogInfo($"SkinRenderer: rendering at {Screen.width}x{Screen.height}");
+
+                // Other cameras (menu backdrop, overlays) would keep rendering every
+                // frame even though nothing of theirs is captured.
+                var otherCams = Camera.allCameras.Where(c => c != cam).ToList();
+                foreach (var c in otherCams) c.enabled = false;
+
+                _pinCam = cam;
+                _pinPos = cam.transform.position;
+                _pinRot = cam.transform.rotation;
+                RenderPipelineManager.beginCameraRendering += PinCamera;
 
                 // Reconfigure for our render: solid dark background, layer 31 only.
                 cam.clearFlags = CameraClearFlags.SolidColor;
@@ -240,9 +283,13 @@ internal static partial class SkinRenderer
                     }
                 }
                 int currentRotationIdx = 0;
+                if (_maxRotations > 0) totalRotations = Math.Min(totalRotations, _maxRotations);
+                bool LimitHit() => _maxRotations > 0 && currentRotationIdx >= _maxRotations;
+                var captureStart = Time.realtimeSinceStartup;
 
                 foreach (var gear in allUpgradables)
                 {
+                    if (LimitHit()) break;
                     if (gear?.Info?.Upgrades == null) continue;
                     // DropPod's body mesh isn't on the prefab (loaded at mission
                     // spawn) so we can't render it from the menu. Skip outright.
@@ -254,6 +301,7 @@ internal static partial class SkinRenderer
                     var seenNames = new HashSet<string>();
                     foreach (var skin in skins)
                     {
+                        if (LimitHit()) break;
                         var dedupeKey = skin.Name ?? skin.APIName;
                         if (!seenNames.Add(dedupeKey)) { skipped++; continue; }
 
@@ -268,7 +316,7 @@ internal static partial class SkinRenderer
                         // gets its own output folder so the bash post-pass encodes a
                         // separate mp4 per (skin, target).
                         int totalTargets = ctx.rotationTargets.Count;
-                        for (int targetIdx = 0; targetIdx < totalTargets; targetIdx++)
+                        for (int targetIdx = 0; targetIdx < totalTargets && !LimitHit(); targetIdx++)
                         {
                             currentRotationIdx++;
                             ctx.forcedSegmentIdx = targetIdx;
@@ -306,14 +354,15 @@ internal static partial class SkinRenderer
                 // the run complete. Without this, the .done marker fires while
                 // tasks are still flushing and the polling mise task reads a
                 // partial JPG count.
-                Plugin.Log.LogInfo($"SkinRenderer: capture done; draining {_pendingWrites.Count} pending writes…");
-                while (_pendingWrites.Count > 0)
+                var captureSecs = Time.realtimeSinceStartup - captureStart;
+                Plugin.Log.LogInfo($"SkinRenderer: capture done — {rendered} frames in {captureSecs:F1}s ({rendered / Mathf.Max(captureSecs, 0.001f):F1} fps); draining {_pendingWrites.Count} pending writes…");
+                while (_pendingWrites.Count > 0 || _pendingReadbacks > 0)
                 {
                     _pendingWrites.RemoveAll(t => t.IsCompleted);
                     // WaitForSecondsRealtime is unaffected by Time.timeScale (which we
                     // pinned to 0 above to freeze physics/particles); WaitForSeconds
                     // would hang indefinitely here.
-                    if (_pendingWrites.Count > 0) yield return new WaitForSecondsRealtime(0.1f);
+                    if (_pendingWrites.Count > 0 || _pendingReadbacks > 0) yield return new WaitForSecondsRealtime(0.1f);
                 }
                 if (!string.IsNullOrEmpty(_lastEncodeError))
                     Plugin.Log.LogWarning($"  some async encodes raised: {_lastEncodeError} (most recent)");
@@ -321,9 +370,13 @@ internal static partial class SkinRenderer
                 Plugin.Log.LogInfo($"SkinRenderer: done. rendered={rendered} skipped={skipped} failed={failed}");
 
                 // Release pooled capture texture.
-                if (_captureTex != null) { UnityEngine.Object.Destroy(_captureTex); _captureTex = null; }
+                if (_captureRT != null) { _captureRT.Release(); UnityEngine.Object.Destroy(_captureRT); _captureRT = null; }
+                if (_scaledRT != null) { _scaledRT.Release(); UnityEngine.Object.Destroy(_scaledRT); _scaledRT = null; }
 
                 // Restore camera + canvases. Re-parent first, then world transform.
+                RenderPipelineManager.beginCameraRendering -= PinCamera;
+                Screen.SetResolution(savedScreenW, savedScreenH, savedScreenMode);
+                foreach (var c in otherCams) if (c != null) c.enabled = true;
                 Time.timeScale = savedTimeScale;
                 QualitySettings.vSyncCount = savedVsync;
                 Application.targetFrameRate = savedTargetFps;

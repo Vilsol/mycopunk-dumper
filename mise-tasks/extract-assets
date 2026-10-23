@@ -85,15 +85,24 @@ if [ "$load_code" != "200" ] && [ "$load_code" != "302" ]; then
     exit 1
 fi
 
-echo "Exporting to $OUT (5–15 minutes; 4.9 GB resources.assets.resS to walk)..."
+# AssetRipper wipes its export target, so export into a scratch subdir and move
+# the result into place — $OUT also holds skin-previews/ from render-skins.
+STAGE="$OUT/.assetripper-export"
+rm -rf "$STAGE"
+echo "Exporting to $OUT (15–20 minutes; 4.9 GB resources.assets.resS to walk)..."
 START=$(date +%s)
-export_code=$(curl -s --max-time 0 -X POST --data-urlencode "Path=$OUT" \
+export_code=$(curl -s --max-time 0 -X POST --data-urlencode "Path=$STAGE" \
     -o /dev/null -w "%{http_code}" "http://localhost:$PORT/Export/UnityProject")
 ELAPSED=$(( $(date +%s) - START ))
 if [ "$export_code" != "200" ] && [ "$export_code" != "302" ]; then
     echo "Export failed (HTTP $export_code) after ${ELAPSED}s — see $LOG" >&2
     exit 1
 fi
+for d in "$STAGE"/*; do
+    rm -rf "$OUT/$(basename "$d")"
+    mv "$d" "$OUT/"
+done
+rmdir "$STAGE"
 
 if [ -d "$TEX_DIR" ]; then
     count=$(find "$TEX_DIR" -name "*.png" 2>/dev/null | wc -l)
