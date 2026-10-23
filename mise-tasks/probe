@@ -33,12 +33,24 @@ for _ in $(seq 1 100); do
     sleep 3
 done
 
-rm -f "$FLAG"
-
 if [[ ! -s "$DATA" ]]; then
+    rm -f "$FLAG"
     echo "ERROR: timeout — data.json never appeared. Last log lines:" >&2
     tail -20 "$LOG" >&2 2>/dev/null || true
     exit 1
+fi
+
+# Post-dump probes (Probe.RunAfterDump) keep going after data.json; wait for their
+# done marker, or the game exiting/crashing, with a 15-minute cap.
+for _ in $(seq 1 300); do
+    if [[ -f "$PROBE_DIR/done" ]]; then break; fi
+    pgrep -f '[M]ycopunk\.exe' >/dev/null || break
+    sleep 3
+done
+rm -f "$FLAG"
+if [[ ! -f "$PROBE_DIR/done" ]]; then
+    echo "WARNING: post-dump probes didn't finish (no $PROBE_DIR/done). Last log lines:" >&2
+    tail -20 "$LOG" >&2 2>/dev/null || true
 fi
 
 pkill -f Mycopunk.exe >/dev/null 2>&1 || true

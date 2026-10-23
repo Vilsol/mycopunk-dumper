@@ -35,6 +35,18 @@ internal static class Probe
     private static StringBuilder _catalogs;
     private static StringBuilder _subclasses;
 
+    /// <summary>
+    /// Post-dump probes: run from <c>Plugin.Start</c> after data.json is written and the
+    /// dump scenes are unloaded, so they may load/unload scenes and bundles freely.
+    /// Writes <c>probe/done</c> last — <c>mise run probe</c> waits for that, not data.json.
+    /// </summary>
+    public static IEnumerator RunAfterDump()
+    {
+        if (_root == null) yield break;
+        // Add post-dump probe coroutines here.
+        File.WriteAllText(Path.Combine(_root, "done"), "");
+    }
+
     public static void Run()
     {
         var flag = Path.Combine(Paths.GameRootPath, "probe.flag");

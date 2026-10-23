@@ -737,6 +737,7 @@ public partial class Plugin : BaseUnityPlugin
         Logger.LogInfo($"Wrote {outputPath}");
 
         yield return UnloadDumpScenes();
+        yield return Probe.RunAfterDump();   // no-op unless probe.flag is present
         // After the dump, so it never overlaps the additive scene loads above.
         SkinRenderer.Run();   // no-op unless render-skins.flag is present and rendering is enabled
     }
