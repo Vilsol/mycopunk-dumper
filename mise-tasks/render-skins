@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 #MISE description="Render PNG previews of every (gear, skin) combo via in-game render-to-texture. Requires Steam launch options WITHOUT -batchmode/-nographics."
-#MISE depends=["deploy"]
+#MISE depends=["release"]
 set -uo pipefail
+
+# One game run at a time: parallel worktrees share $MYCOPUNK_DIR. Deploy inside the
+# lock so another worktree can't swap the DLL between our deploy and launch.
+exec 9>"$MYCOPUNK_DIR/.game.lock"
+flock 9
+"$(dirname "$0")/deploy"
 
 GAME_PROC="Mycopunk.exe"
 FLAG="$MYCOPUNK_DIR/render-skins.flag"
@@ -39,7 +45,7 @@ rm -rf "$OUT_DIR" "$DONE" "$LOG"
 # Flag content = optional rotation cap for test runs (RENDER_LIMIT=3 mise run render-skins).
 echo "${RENDER_LIMIT:-}" > "$FLAG"
 
-steam "steam://rungameid/$MYCOPUNK_APPID" >/dev/null 2>&1 || true
+steam "steam://rungameid/$MYCOPUNK_APPID" >/dev/null 2>&1 9>&- || true
 echo "Launched Mycopunk with skin-renderer enabled at $(date +%T); polling for completion…"
 
 # ~1000 rotations × 180 frames ≈ 180k frames, well past any fixed short timeout.

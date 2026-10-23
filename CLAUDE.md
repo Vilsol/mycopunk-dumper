@@ -20,7 +20,7 @@ mise run release     # Release build → src/bin/Release/...
 mise run clean
 mise run deploy      # release + copy DLL into $MYCOPUNK_DIR/BepInEx/plugins
 mise run dump        # deploy + headless launch via Steam URI + wait for data.json (~35s end-to-end)
-mise run probe       # like dump but with the probe enabled (writes $MYCOPUNK_DIR/probe/)
+mise run probe       # like dump but with the probe enabled (writes $MYCOPUNK_DIR/probe/, copied to ./probe-out/)
 mise run coverage    # after probe: list SO catalogs / Global fields / prefab components the dumper never references
 mise run copy-dump   # copy $MYCOPUNK_DIR/data.json into the repo
 mise run decompile   # re-decompile Assembly-CSharp.dll into ./decompiled/ (run after game updates)
@@ -30,6 +30,8 @@ mise run ci-dump     # CI-only: same contract as `dump` but launches Mycopunk.ex
 ```
 
 `release-version` honours two env vars: `DUMP_TASK` (default `dump`; CI sets it to `ci-dump`) selects the dump task it invokes, and `STEAM_MANIFEST_ID` (passed through to `release-dump`) gets stamped onto the new `index.json` entry as `steamManifestId` so the autonomous workflow can no-op when the Steam manifest gid hasn't moved. Locally, both unset → behaviour is unchanged from before. The dump-time enrichment with `property-labels.json` lives in `scripts/dump-enrich.py` (shared by `dump` and `ci-dump`); modify it there if you change the merge logic. `release-version` now runs `mise run extract-labels` between decompile and build so the enrichment is always fresh.
+
+`dump`, `probe` and `render-skins` hold `flock $MYCOPUNK_DIR/.game.lock` across deploy + run, so parallel worktrees queue for the single game install instead of swapping each other's DLL; `probe` copies its output into the worktree's `./probe-out/` (gitignored) while still holding the lock, and `coverage` reads from there.
 
 `mise run dump` requires Steam already running and these Steam launch options on the game (Properties → Launch Options):
 

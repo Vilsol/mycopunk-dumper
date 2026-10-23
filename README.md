@@ -62,7 +62,7 @@ All build & deploy flows are mise tasks.
 | `mise run deploy` | Release + copy DLL into `$MYCOPUNK_DIR/BepInEx/plugins` |
 | `mise run dump` | Deploy + headless launch + wait for `data.json` (~35s) |
 | `mise run copy-dump` | Copy `$MYCOPUNK_DIR/data.json` into the repo |
-| `mise run probe` | Like `dump` but with `Probe.cs` enabled — writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, catalogs/, global-fields.txt, components.txt, subclasses.txt, samples/}` for exploration before adding a new dumper |
+| `mise run probe` | Like `dump` but with `Probe.cs` enabled — writes `$MYCOPUNK_DIR/probe/{types.md, catalogs.txt, catalogs/, global-fields.txt, components.txt, subclasses.txt, samples/}` (copied to `./probe-out/`) for exploration before adding a new dumper |
 | `mise run coverage` | After `probe`: list ScriptableObject catalogs, `Global` fields and prefab component types the dumper doesn't reference yet |
 | `mise run diff <old.json> <new.json> [section[/key]]` | Side-by-side diff of two dumps (strips noisy `instanceID`/`ID`) |
 | `mise run decompile` | Re-decompile `Assembly-CSharp.dll` into `./decompiled/` |

@@ -486,6 +486,7 @@ decompiled/
 # Generated dump artifacts
 data.json
 property-labels.json
+probe-out/
 
 # Local Claude scratch / personal notes
 .claude/

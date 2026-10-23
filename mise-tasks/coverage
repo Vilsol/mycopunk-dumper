@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#MISE description="List game catalogs, Global fields and prefab components the dumper doesn't reference. Reads the last `mise run probe` output + ./decompiled/."
+#MISE description="List game catalogs, Global fields and prefab components the dumper doesn't reference. Reads the last `mise run probe` output (./probe-out/) + ./decompiled/."
 set -euo pipefail
 
-if [[ ! -f "$MYCOPUNK_DIR/probe/catalogs.txt" ]]; then
-    echo "ERROR: no probe output at $MYCOPUNK_DIR/probe — run 'mise run probe' first." >&2
+root="$(dirname "$0")/.."
+if [[ ! -f "$root/probe-out/catalogs.txt" ]]; then
+    echo "ERROR: no probe output at $root/probe-out — run 'mise run probe' first." >&2
     exit 1
 fi
 
-root="$(dirname "$0")/.."
-exec python3 "$root/tools/coverage.py" "$MYCOPUNK_DIR/probe" "$root/src" "$root/decompiled"
+exec python3 "$root/tools/coverage.py" "$root/probe-out" "$root/src" "$root/decompiled"
