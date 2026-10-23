@@ -71,3 +71,32 @@ for line in (probe / "components.txt").read_text().splitlines():
 for n, t in rows[:60]:
     print(f"{n:>6}  {t}")
 print(f"# {len(rows)} unreferenced MonoBehaviour types total")
+
+
+# Post-dump probe aggregates (ProbeContent.cs): "<count>  <type>  <comma-separated scenes|bundles>"
+def aggregate(name):
+    path = probe / name
+    if not path.exists():
+        return []
+    return [(int(m[1]), m[2], m[3]) for line in path.read_text().splitlines() if (m := re.match(r"\s*(\d+)\s+(\S+)\s+(\S+)$", line))]
+
+
+startup = {m[2] for line in (probe / "components.txt").read_text().splitlines() if (m := re.match(r"\s*(\d+)\s+(\S+)$", line))}
+startup_so = {m[3] for line in (probe / "catalogs.txt").read_text().splitlines() if (m := re.match(r"\s*(\d+)\s+(\d+)\s+(\S+)$", line))}
+
+print("\n## Game MonoBehaviour types found only in build scenes, not covered by the dumper")
+print("# count  type  [ancestors]  scenes")
+rows = [r for r in aggregate("scene-components.txt") if r[1] not in startup and short(r[1]) in bases and not covered(short(r[1]))]
+for n, t, where in rows:
+    print(f"{n:>6}  {t}  [{chain(short(t))}]  {where}")
+print(f"# {len(rows)} scene-only unreferenced types")
+
+print("\n## ScriptableObject types only visible while a build scene is loaded, not covered by the dumper")
+for n, t, where in aggregate("scene-catalogs.txt"):
+    if t not in startup_so and not covered(short(t)):
+        print(f"{n:>6}  {t}  [{chain(short(t))}]  {where}")
+
+print("\n## Asset types in StreamingAssets bundles not referenced by the dumper")
+for n, t, where in aggregate("bundle-assets.txt"):
+    if not covered(short(t)):
+        print(f"{n:>6}  {t}  [{chain(short(t))}]  {where}")

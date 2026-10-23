@@ -44,6 +44,7 @@ internal static class Probe
     {
         if (_root == null) yield break;
         // Add post-dump probe coroutines here.
+        yield return ProbeContent.Run(_root);
         File.WriteAllText(Path.Combine(_root, "done"), "");
     }
 
