@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Export the datalog (codex lore) images from the datalogs bundle as PNGs into ~/MycopunkExtracted/<version>/datalogs/ via UnityPy. AssetRipper can't read this bundle (its header has the Unity version stripped)."
+set -euo pipefail
+
+VERSION="${1:-}"
+if [ -z "$VERSION" ] && [ -f "$MYCOPUNK_DIR/data.json" ]; then
+    VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gameVersion",{}).get("Version",""))' "$MYCOPUNK_DIR/data.json")
+fi
+if [ -z "$VERSION" ]; then
+    echo "Usage: mise run extract-datalogs [<version>]  (version is read from \$MYCOPUNK_DIR/data.json — run 'mise run dump' first)" >&2
+    exit 2
+fi
+
+BUNDLE="$MYCOPUNK_DIR/Mycopunk_Data/StreamingAssets/Bundles/StandaloneWindows64/datalogs"
+# The bundle carries no Unity version; take it from the player's globalgamemanagers.
+# (strings gets SIGPIPE once grep -m1 matches; don't let pipefail treat that as failure)
+UNITY=$({ strings -n 6 "$MYCOPUNK_DIR/Mycopunk_Data/globalgamemanagers" || true; } | grep -m1 -E '^[0-9]{4}\.[0-9]+\.[0-9]+[a-z][0-9]+$')
+OUT="$HOME/MycopunkExtracted/$VERSION/datalogs"
+rm -rf "$OUT"
+uv run --quiet --no-project --with UnityPy python -I -W ignore::UserWarning "$(dirname "$(realpath "$0")")/../tools/datalogs-png.py" "$BUNDLE" "$OUT" "$UNITY"
+echo "PNGs at $OUT (Unity $UNITY)"
