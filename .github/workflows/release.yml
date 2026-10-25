@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      id-token: write  # NuGet Trusted Publishing (OIDC)
     env:
       MYCOPUNK_APPID: "3247750"
       # The depot ID for the Linux/Windows build of Mycopunk. Confirm by running
@@ -300,6 +301,31 @@ jobs:
           # UMU_RUN is exported into GITHUB_ENV by the "Install umu-launcher" step
         run: |
           mise run release-version "${{ github.workspace }}/mycopunk-data"
+
+      - name: Pack GameLibs NuGet package
+        if: steps.gate.outputs.run == 'true'
+        working-directory: dumper
+        run: |
+          mise exec -- dotnet tool install -g --version 0.4.3 BepInEx.AssemblyPublicizer.Cli
+          mise run gamelibs
+
+      # Trusted Publishing: exchanges the job's OIDC token for a 1-hour API key,
+      # so request it right before the push.
+      - name: NuGet login
+        if: steps.gate.outputs.run == 'true'
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push GameLibs NuGet package
+        if: steps.gate.outputs.run == 'true'
+        working-directory: dumper
+        run: |
+          mise exec -- dotnet nuget push gamelibs-out/*.nupkg \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Commit and push to mycopunk-data
         if: steps.gate.outputs.run == 'true'

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- Pack-only project: ships the stripped DLLs staged by `mise run gamelibs`, builds nothing. -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
+
+        <PackageId>Mycopunk.GameLibs.Steam</PackageId>
+        <Authors>Vilsol</Authors>
+        <Description>Stripped and publicized game libraries for modding Mycopunk. Compile-time reference only.</Description>
+        <PackageTags>mycopunk;gamelibs;bepinex;modding</PackageTags>
+        <RepositoryUrl>https://github.com/Vilsol/mycopunk-dumper</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/Vilsol/mycopunk-dumper</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="$(LibDir)/*.dll" Pack="true" PackagePath="lib/netstandard2.1/" />
+        <None Include="README.md" Pack="true" PackagePath="/" />
+    </ItemGroup>
+</Project>

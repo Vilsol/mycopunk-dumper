@@ -26,6 +26,7 @@ mise run copy-dump   # copy $MYCOPUNK_DIR/data.json into the repo
 mise run decompile   # re-decompile Assembly-CSharp.dll into ./decompiled/ (run after game updates)
 mise run extract-datalogs  # datalog (codex lore) images → ~/MycopunkExtracted/<version>/datalogs/*.png via UnityPy (AssetRipper can't read that bundle: its header has the Unity version stripped)
 mise run diff <old> <new> [section[/key]]  # side-by-side dump diff via tools/diff.py — strips noisy `instanceID`/`ID` keys
+mise run gamelibs    # after a dump: stripped+publicized Managed/*.dll → ./gamelibs-out/Mycopunk.GameLibs.Steam.<ver>.<buildid>.nupkg (needs global assembly-publicizer 0.4.3); CI pushes it to nuget.org via Trusted Publishing (OIDC, `NUGET_USER` secret)
 mise run ci-buildid  # CI-only: print current Steam public-branch manifest gid (needs STEAM_USERNAME/PASSWORD + DepotDownloader; assumes Steam Guard is disabled on the account)
 mise run ci-dump     # CI-only: same contract as `dump` but launches Mycopunk.exe directly under Proton (needs $PROTON_DIR pointing at an extracted Proton install). Used by .github/workflows/release.yml.
 ```
