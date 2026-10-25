@@ -31,9 +31,13 @@ find "$MANAGED" -maxdepth 1 -name '*.dll' \
     ! -name 'System*' ! -name 'Mono*' ! -name 'mscorlib.dll' ! -name 'netstandard.dll' \
     -exec cp {} "$OUT/raw/" \;
 
-PUBLICIZE=(Assembly-CSharp.dll Assembly-CSharp-firstpass.dll)
-"$PUBLICIZER" --strip -f -o "$OUT/lib" "${PUBLICIZE[@]/#/$OUT/raw/}" >/dev/null
-rm "${PUBLICIZE[@]/#/$OUT/raw/}"
+# firstpass isn't in every build (the CI depot download lacks it), so publicize whichever exist.
+PUBLICIZE=()
+for f in Assembly-CSharp.dll Assembly-CSharp-firstpass.dll; do
+    [ -f "$OUT/raw/$f" ] && PUBLICIZE+=("$OUT/raw/$f")
+done
+"$PUBLICIZER" --strip -f -o "$OUT/lib" "${PUBLICIZE[@]}" >/dev/null
+rm "${PUBLICIZE[@]}"
 "$PUBLICIZER" --strip-only -f -o "$OUT/lib" "$OUT/raw/"*.dll >/dev/null
 
 dotnet pack "$REPO/gamelibs/Mycopunk.GameLibs.Steam.csproj" \
