@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Pack stripped + publicized Mycopunk_Data/Managed DLLs into ./gamelibs-out/Mycopunk.GameLibs.Steam.<version>.<buildid>.nupkg (version read from data.json)"
+#MISE description="Pack stripped + publicized Mycopunk_Data/Managed DLLs into ./gamelibs-out/Mycopunk.GameLibs.Steam.<version>.nupkg, versioned <game version>+<build id> from data.json"
 set -euo pipefail
 
 REPO="$(realpath "$(dirname "$0")/..")"
@@ -17,11 +17,13 @@ fi
 # The game's version string comes from the dump, so this must run after a dump of the same build.
 GAME_VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["Version"])' "$DUMP")
 BUILD_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gameVersion"]["BuildID"])' "$DUMP")
-if ! [[ "$BUILD_ID" =~ ^[0-9]+$ && "$GAME_VERSION" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+# SemVer with the build ID as metadata. The game has shipped two-part versions (v2.0), so pad the patch.
+# NuGet ignores +metadata for identity: a rebuild under the same game version is a duplicate and gets skipped.
+if ! [[ "$BUILD_ID" =~ ^[0-9]+$ && "$GAME_VERSION" =~ ^v?([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]]; then
     echo "Unexpected game version '$GAME_VERSION' / build '$BUILD_ID' in $DUMP" >&2
     exit 1
 fi
-VERSION="${BASH_REMATCH[1]}.$BUILD_ID"
+VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[4]:-0}+$BUILD_ID"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/raw" "$OUT/lib"
@@ -44,4 +46,4 @@ dotnet pack "$REPO/gamelibs/Mycopunk.GameLibs.Steam.csproj" \
     -p:LibDir="$OUT/lib" -p:PackageVersion="$VERSION" \
     -o "$OUT" --nologo -v quiet
 
-echo "Packed $OUT/Mycopunk.GameLibs.Steam.$VERSION.nupkg ($(find "$OUT/lib" -name '*.dll' | wc -l) DLLs)"
+echo "Packed $OUT/Mycopunk.GameLibs.Steam.${VERSION%+*}.nupkg ($VERSION, $(find "$OUT/lib" -name '*.dll' | wc -l) DLLs)"

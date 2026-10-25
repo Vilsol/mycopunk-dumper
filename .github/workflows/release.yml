@@ -302,6 +302,22 @@ jobs:
         run: |
           mise run release-version "${{ github.workspace }}/mycopunk-data"
 
+      - name: Commit and push to mycopunk-data
+        if: steps.gate.outputs.run == 'true'
+        working-directory: mycopunk-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data schema/data.schema.json index.json _redirects
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          VERSION="$(jq -r .latest index.json)"
+          BUILD_ID="$(jq -r --arg v "$VERSION" '.versions[] | select(.version==$v) | .buildId' index.json)"
+          git commit -m "release $VERSION (build $BUILD_ID)"
+          git push origin HEAD:main
+
       - name: Pack GameLibs NuGet package
         if: steps.gate.outputs.run == 'true'
         working-directory: dumper
@@ -326,22 +342,6 @@ jobs:
             --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
-
-      - name: Commit and push to mycopunk-data
-        if: steps.gate.outputs.run == 'true'
-        working-directory: mycopunk-data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data schema/data.schema.json index.json _redirects
-          if git diff --cached --quiet; then
-            echo "No changes to publish."
-            exit 0
-          fi
-          VERSION="$(jq -r .latest index.json)"
-          BUILD_ID="$(jq -r --arg v "$VERSION" '.versions[] | select(.version==$v) | .buildId' index.json)"
-          git commit -m "release $VERSION (build $BUILD_ID)"
-          git push origin HEAD:main
 
       - name: Upload diagnostics on failure
         if: failure() && steps.gate.outputs.run == 'true'
